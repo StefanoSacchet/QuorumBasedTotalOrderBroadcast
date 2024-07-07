@@ -7,8 +7,11 @@ import akka.actor.ActorSystem;
 import akka.actor.AbstractActor;
 import akka.actor.Props;
 
+import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.messages.SetCoordinator;
 import it.unitn.ds1.messages.SetNeighbors;
+import it.unitn.ds1.messages.Message;
+import it.unitn.ds1.tools.Pair;
 
 public class HelloExample {
     final static int N_COHORTS = 5;
@@ -38,10 +41,26 @@ public class HelloExample {
         for (int i = 0; i <= N_COHORTS; i++) {
             ActorRef predecessor = cohorts[(i - 1 + N_COHORTS + 1) % (N_COHORTS + 1)];
             ActorRef successor = cohorts[(i + 1) % (N_COHORTS + 1)];
-            cohorts[i].tell(new SetNeighbors(predecessor, successor), ActorRef.noSender());
-            cohorts[i].tell(new SetCoordinator(cohorts[0]), ActorRef.noSender());
+            Message msgNeighbors = new Message<Pair<ActorRef, ActorRef>>(MessageTypes.SET_NEIGHBORS, new Pair<>(predecessor, successor));
+            cohorts[i].tell(msgNeighbors, ActorRef.noSender());
+            Message msgCoordinator = new Message<ActorRef>(MessageTypes.SET_COORDINATOR, cohorts[0]);
+            cohorts[i].tell(msgCoordinator, ActorRef.noSender());
         }
 
+
+        ActorRef[] clients = new ActorRef[N_COHORTS + 1];
+        for (int i = 0; i <= N_COHORTS; i++) {
+            clients[i] = system.actorOf(
+                    Client.props(cohorts[i]),
+                    "client_" + i
+            );
+        }
+
+        Message<Object> msg1 = new Message<Object>(MessageTypes.UPDATE, 2000000);
+        Message<Object> msg2 = new Message<Object>(MessageTypes.READ, null);
+        cohorts[0].tell(msg1, clients[0]);
+        cohorts[0].tell(msg2, clients[0]);
+        
 
 //        System.out.println("Current java version is " + System.getProperty("java.version"));
 //        System.out.println(">>> Press ENTER to exit <<<");

@@ -1,6 +1,8 @@
 package it.unitn.ds1;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.ArrayList;
 
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
@@ -21,46 +23,49 @@ public class HelloExample {
         final ActorSystem system = ActorSystem.create("ringTopologySystem");
 
         // Create an array to hold references to the cohorts
-        ActorRef[] cohorts = new ActorRef[N_COHORTS + 1]; // N_COHORTS + 1 to include the coordinator
+
+        List<ActorRef> cohorts = new ArrayList<ActorRef>(N_COHORTS + 1);
 
         // Create the Coordinator cohort
-        cohorts[0] = system.actorOf(
+        ActorRef coordinator = system.actorOf(
                 Cohort.props(true), // specifying this cohort as the coordinator
                 "cohort_0"       // the new actor name (unique within the system)
         );
+        cohorts.add(coordinator);
 
         // Create multiple Cohort actors
         for (int i = 1; i <= N_COHORTS; i++) {
-            cohorts[i] = system.actorOf(
+            ActorRef cohort = system.actorOf(
                     Cohort.props(false), // specifying this cohort as not the coordinator
                     "cohort_" + i         // the new actor name (unique within the system)
             );
+            cohorts.add(cohort);
         }
 
-        // Link each cohort to its predecessor and successor in a ring
-        for (int i = 0; i <= N_COHORTS; i++) {
-            ActorRef predecessor = cohorts[(i - 1 + N_COHORTS + 1) % (N_COHORTS + 1)];
-            ActorRef successor = cohorts[(i + 1) % (N_COHORTS + 1)];
-            Message msgNeighbors = new Message<Pair<ActorRef, ActorRef>>(MessageTypes.SET_NEIGHBORS, new Pair<>(predecessor, successor));
-            cohorts[i].tell(msgNeighbors, ActorRef.noSender());
-            Message msgCoordinator = new Message<ActorRef>(MessageTypes.SET_COORDINATOR, cohorts[0]);
-            cohorts[i].tell(msgCoordinator, ActorRef.noSender());
+        // Link all cohorts with each other
+        for (ActorRef cohort : cohorts) {
+            cohort.tell(new Message(MessageTypes.SET_NEIGHBORS, cohorts), ActorRef.noSender());
+            cohort.tell(new Message(MessageTypes.SET_COORDINATOR, cohorts.get(0)), ActorRef.noSender());
         }
 
-
-        ActorRef[] clients = new ActorRef[N_COHORTS + 1];
+        List<ActorRef> clients = new ArrayList<ActorRef>(N_COHORTS + 1);
         for (int i = 0; i <= N_COHORTS; i++) {
-            clients[i] = system.actorOf(
-                    Client.props(cohorts[i]),
+            ActorRef client = system.actorOf(
+                    Client.props(cohorts.get(i)),
                     "client_" + i
             );
+            clients.add(client);
         }
 
-        Message<Object> msg1 = new Message<Object>(MessageTypes.UPDATE, 2000000);
-        Message<Object> msg2 = new Message<Object>(MessageTypes.READ, null);
-        cohorts[0].tell(msg1, clients[0]);
-        cohorts[0].tell(msg2, clients[0]);
-        
+        Message<Object> msg1 = new Message<Object>(MessageTypes.UPDATE_REQUEST, 2000000);
+        Message<Object> msg2 = new Message<Object>(MessageTypes.READ_REQUEST, null);
+        cohorts.get(0).tell(msg1, clients.get(0));
+        cohorts.get(0).tell(new Message<Object>(MessageTypes.UPDATE_REQUEST, 123090123), clients.get(0));
+
+
+        cohorts.get(0).tell(msg2, clients.get(0));
+
+
 
 //        System.out.println("Current java version is " + System.getProperty("java.version"));
 //        System.out.println(">>> Press ENTER to exit <<<");

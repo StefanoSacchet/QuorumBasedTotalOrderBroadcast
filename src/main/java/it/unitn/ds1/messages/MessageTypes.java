@@ -2,7 +2,8 @@ package it.unitn.ds1.messages;
 
 public enum MessageTypes {
     READ,
-    READOK,
+    READ_REQUEST,
+    UPDATE_REQUEST,
     UPDATE,
     WRITEOK,
     SET_COORDINATOR,
@@ -10,7 +11,9 @@ public enum MessageTypes {
     HEARTBEAT,
     ELECTION,
     SYNC,
+    ACK,
     // todo aggiungere i messaggi per 2pc
+
 }
 
 

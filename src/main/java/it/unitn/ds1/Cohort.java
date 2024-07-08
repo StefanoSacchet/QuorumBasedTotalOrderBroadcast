@@ -12,12 +12,18 @@ import it.unitn.ds1.messages.SetNeighbors;
 import it.unitn.ds1.messages.SetCoordinator;
 import it.unitn.ds1.tools.Pair;
 
+import java.util.List;
+
 public class Cohort extends AbstractActor {
     private boolean isCoordinator;
     private ActorRef predecessor;
     private ActorRef successor;
+    private List<ActorRef> cohorts;
     private ActorRef coordinator;
     private int state;
+    private int voters;
+    private int unstableState;
+    private ActorRef pendingClient;
 
     static Props props(boolean isCoordinator) {
         return Props.create(Cohort.class, () -> new Cohort(isCoordinator));
@@ -26,20 +32,14 @@ public class Cohort extends AbstractActor {
     public Cohort(boolean isCoordinator) {
         this.isCoordinator = isCoordinator;
         this.state = 0;
+        this.voters = 0;
+        this.unstableState = 0;
     }
 
-    public int getState() {
-        return this.state;
-    }
-
-    private void onSetNeighbors(Pair<?, ?> pair) {
+    private void onSetNeighbors(List<?> cohorts) {
         //1st is predecessor, 2nd is successor
-
-        this.predecessor = (ActorRef) pair.getFirst();
-        this.successor = (ActorRef) pair.getSecond();
-        String role = isCoordinator ? "Coordinator" : "Cohort";
-        System.out.println(role + " " + getSelf().path().name() + " neighbors set to: " +
-                "predecessor=" + predecessor.path().name() + ", successor=" + successor.path().name());
+        this.cohorts = (List<ActorRef>) cohorts;
+        System.out.println("cohorts are " + this.cohorts);
     }
 
     private void onSetCoordinator(ActorRef coordinator) {
@@ -48,13 +48,49 @@ public class Cohort extends AbstractActor {
         System.out.println(role + " " + getSelf().path().name() + " coordinator set to: " + coordinator.path().name());
     }
 
-    private void onRead(ActorRef sender) {
-        sender.tell(new Message<>(MessageTypes.READOK, this.state), getSelf());
+    private void onReadRequest(ActorRef sender) {
+        sender.tell(new Message<>(MessageTypes.READ, this.state), getSelf());
     }
 
-    private void onUpdate(Integer newState, ActorRef sender) {
+    private void onUpdateRequest(Integer newState, ActorRef sender) {
+        if (this.isCoordinator) {
+            this.unstableState = newState;
+            this.pendingClient = sender;
+            startQuorum(newState);
+        } else {
+            this.coordinator.tell(new Message(MessageTypes.UPDATE_REQUEST, newState), getSelf());
+        }
+    }
+
+    private void startQuorum(int newState) {
+        for (ActorRef cohort : this.cohorts) {
+            cohort.tell(new Message(MessageTypes.UPDATE, newState), getSelf());
+        }
+    }
+
+    private void onUpdate(int newState) {
+        ActorRef sender = getSender();
+        sender.tell(new Message(MessageTypes.ACK, null), getSelf());
+    }
+
+    private void onACK() {
+        this.voters++;
+        if (this.voters >= Math.ceil(this.cohorts.size() / 2)) {
+            for (ActorRef cohort : this.cohorts) {
+                cohort.tell(new Message(MessageTypes.WRITEOK, this.unstableState), getSelf());
+            }
+            this.voters = 0;
+
+        }
+    }
+    private void onWriteOk(Integer newState) {
         this.state = newState;
-        sender.tell(new Message<>(MessageTypes.WRITEOK, null), getSelf());
+        this.unstableState = 0;
+        System.out.println("State updated to " + this.state);
+        if (this.pendingClient != null){
+            this.pendingClient.tell(new Message(MessageTypes.WRITEOK, this.state), getSelf());
+            this.pendingClient = null;
+        }
     }
 
     private void onMessage(Message<?> message) {
@@ -65,17 +101,35 @@ public class Cohort extends AbstractActor {
                 onSetCoordinator((ActorRef) message.payload);
                 break;
             case SET_NEIGHBORS:
-                assert message.payload instanceof Pair<?, ?>;
-                onSetNeighbors((Pair<?, ?>) message.payload);
+                assert message.payload instanceof List<?>;
+                onSetNeighbors((List<?>) message.payload);
                 break;
-            case READ:
+            case READ_REQUEST:
                 assert message.payload == null;
-                onRead(sender);
+                onReadRequest(sender);
+                break;
+            case UPDATE_REQUEST:
+                assert message.payload instanceof Integer;
+                System.out.println("Making update Request");
+                onUpdateRequest((Integer) message.payload, sender);
                 break;
             case UPDATE:
                 assert message.payload instanceof Integer;
-                onUpdate((Integer) message.payload, sender);
+                onUpdate((Integer) message.payload);
                 break;
+            case ACK:
+                assert message.payload == null;
+                if (this.isCoordinator) {
+                    onACK();
+                } else {
+                    Exception e = new Exception("Not a coordinator");
+                    e.printStackTrace();
+                }
+                break;
+                case WRITEOK:
+                    assert message.payload instanceof Integer;
+                    onWriteOk((Integer) message.payload);
+                    break;
             default:
                 System.out.println("Received message: " + message.topic + " with payload: " + message.payload);
         }
@@ -89,4 +143,5 @@ public class Cohort extends AbstractActor {
                 .match(Message.class, this::onMessage)
                 .build();
     }
+
 }

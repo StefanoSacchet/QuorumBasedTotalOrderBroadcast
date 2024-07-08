@@ -8,7 +8,7 @@ import it.unitn.ds1.messages.SetCoordinator;
 import it.unitn.ds1.messages.SetNeighbors;
 
 public class Client extends AbstractActor {
-    private ActorRef rxCohort;
+    public ActorRef rxCohort;
 
     public Client(ActorRef rxCohort) {
         this.rxCohort = rxCohort;
@@ -24,11 +24,11 @@ public class Client extends AbstractActor {
 
     private void onMessage(Message<?> message) {
         switch (message.topic) {
-            case READOK:
-                System.out.println("Received" + message.topic + " message from " + getSender().path().name() + " with value " + message.payload);
+            case READ:
+                System.out.println("Received " + message.topic + " message from " + getSender().path().name() + " with value " + message.payload);
                 break;
             case WRITEOK:
-                System.out.println("Received " + message.topic + " message from " + getSender().path().name());
+                System.out.println("Received " + message.topic + " message from " + getSender().path().name()+ " with value " + message.payload);
                 break;
             default:
                 System.out.println("Received unknown message from " + getSender().path().name());

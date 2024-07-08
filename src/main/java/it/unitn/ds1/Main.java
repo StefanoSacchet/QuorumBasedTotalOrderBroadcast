@@ -6,16 +6,11 @@ import java.util.ArrayList;
 
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
-import akka.actor.AbstractActor;
-import akka.actor.Props;
 
 import it.unitn.ds1.messages.MessageTypes;
-import it.unitn.ds1.messages.SetCoordinator;
-import it.unitn.ds1.messages.SetNeighbors;
 import it.unitn.ds1.messages.Message;
-import it.unitn.ds1.tools.Pair;
 
-public class HelloExample {
+public class Main {
     final static int N_COHORTS = 5;
 
     public static void main(String[] args) {
@@ -44,8 +39,8 @@ public class HelloExample {
 
         // Link all cohorts with each other
         for (ActorRef cohort : cohorts) {
-            cohort.tell(new Message(MessageTypes.SET_NEIGHBORS, cohorts), ActorRef.noSender());
-            cohort.tell(new Message(MessageTypes.SET_COORDINATOR, cohorts.get(0)), ActorRef.noSender());
+            cohort.tell(new Message<List<ActorRef>>(MessageTypes.SET_NEIGHBORS, cohorts), ActorRef.noSender());
+            cohort.tell(new Message<ActorRef>(MessageTypes.SET_COORDINATOR, cohorts.get(0)), ActorRef.noSender());
         }
 
         List<ActorRef> clients = new ArrayList<ActorRef>(N_COHORTS + 1);
@@ -58,14 +53,17 @@ public class HelloExample {
         }
 
         Message<Object> msg1 = new Message<Object>(MessageTypes.UPDATE_REQUEST, 2000000);
-        Message<Object> msg2 = new Message<Object>(MessageTypes.READ_REQUEST, null);
         cohorts.get(0).tell(msg1, clients.get(0));
-        cohorts.get(0).tell(new Message<Object>(MessageTypes.UPDATE_REQUEST, 123090123), clients.get(0));
 
+        try {
+            System.in.read();
+        } catch (IOException ioe) {
+        } finally {
+            system.terminate();
+        }
 
+        Message<Object> msg2 = new Message<Object>(MessageTypes.READ_REQUEST, null);
         cohorts.get(0).tell(msg2, clients.get(0));
-
-
 
 //        System.out.println("Current java version is " + System.getProperty("java.version"));
 //        System.out.println(">>> Press ENTER to exit <<<");

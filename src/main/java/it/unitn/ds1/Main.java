@@ -11,13 +11,16 @@ import akka.actor.ActorSystem;
 import it.unitn.ds1.loggers.LogParser;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.messages.Message;
+import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
 import it.unitn.ds1.loggers.Logger;
+
+import javax.swing.plaf.ComponentInputMapUIResource;
 
 public class Main {
 
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
         DotenvLoader dotenv = DotenvLoader.getInstance();
         Logger.clearFile(dotenv.getLogPath());
         int N_COHORTS = dotenv.getNCohorts();
@@ -48,8 +51,8 @@ public class Main {
 
         // Link all cohorts with each other
         for (ActorRef cohort : cohorts) {
-            cohort.tell(new Message<List<ActorRef>>(MessageTypes.SET_NEIGHBORS, cohorts), ActorRef.noSender());
-            cohort.tell(new Message<ActorRef>(MessageTypes.SET_COORDINATOR, cohorts.get(0)), ActorRef.noSender());
+            CommunicationWrapper.send(cohort, new Message<List<ActorRef>>(MessageTypes.SET_NEIGHBORS, cohorts), ActorRef.noSender());
+            CommunicationWrapper.send(cohort, new Message<ActorRef>(MessageTypes.SET_COORDINATOR, cohorts.get(0)), ActorRef.noSender());
         }
 
         List<ActorRef> clients = new ArrayList<ActorRef>(N_COHORTS + 1);
@@ -62,26 +65,20 @@ public class Main {
         }
 
         Message<Object> msg1 = new Message<Object>(MessageTypes.UPDATE_REQUEST, 2000000);
-        cohorts.get(0).tell(msg1, clients.get(0));
+        CommunicationWrapper.send(cohorts.get(0), msg1, clients.get(0));
+        System.out.println("sent update request");
 
         try {
-            Thread.sleep(1000);
+            Thread.sleep(2000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
-        } finally {
-            system.terminate();
         }
 
-        Message<Object> msg2 = new Message<Object>(MessageTypes.READ_REQUEST, null);
-        cohorts.get(0).tell(msg2, clients.get(0));
 
-//        System.out.println("Current java version is " + System.getProperty("java.version"));
-//        System.out.println(">>> Press ENTER to exit <<<");
-//        try {
-//            System.in.read();
-//        } catch (IOException ioe) {
-//        } finally {
-//            system.terminate();
-//        }
+        Message<Object> msg2 = new Message<Object>(MessageTypes.READ_REQUEST, null);
+        CommunicationWrapper.send(cohorts.get(0), msg2, clients.get(0));
+        System.out.println("finished");
+        system.terminate();
+        
     }
 }

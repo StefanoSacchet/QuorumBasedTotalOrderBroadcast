@@ -6,10 +6,12 @@ import java.io.Serializable;
 public class Message<T> implements Serializable {
     public final MessageTypes topic;
     public final T payload;
+    public final double roundTripTime;
 
     public Message(MessageTypes topic, T payload) {
         this.topic = topic;
         this.payload = payload;
+        this.roundTripTime = Math.random()*1000;
     }
 
 }

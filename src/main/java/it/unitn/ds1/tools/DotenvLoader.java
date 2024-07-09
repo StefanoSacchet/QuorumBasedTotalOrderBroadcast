@@ -28,4 +28,8 @@ public class DotenvLoader {
     public int getNCohorts(){
         return Integer.parseInt(dotenv.get("N_COHORTS"));
     }
+
+    public int getRTT(){
+        return Integer.parseInt(dotenv.get("MAX_RTT"));
+    }
 }

@@ -6,6 +6,7 @@ import akka.actor.Props;
 
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.messages.MessageTypes;
+import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
 import it.unitn.ds1.loggers.CohortLogger;
 
@@ -48,7 +49,7 @@ public class Cohort extends AbstractActor {
     private void onSetNeighbors(List<ActorRef> cohorts) {
         //1st is predecessor, 2nd is successor
         this.cohorts = cohorts;
-//        System.out.println("cohorts are " + this.cohorts);
+        // System.out.println("cohorts are " + this.cohorts);
     }
 
     private void onSetCoordinator(ActorRef coordinator) {
@@ -57,40 +58,40 @@ public class Cohort extends AbstractActor {
 //        System.out.println(role + " " + getSelf().path().name() + " coordinator set to: " + coordinator.path().name());
     }
 
-    private void onReadRequest(ActorRef sender) {
-        sender.tell(new Message<Integer>(MessageTypes.READ, this.state), getSelf());
+    private void onReadRequest(ActorRef sender) throws InterruptedException {
+        CommunicationWrapper.send(sender, new Message<Integer>(MessageTypes.READ, this.state), getSelf());
         this.logger.logReadReq(sender.path().name(), getSelf().path().name());
     }
 
-    private void onUpdateRequest(Integer newState, ActorRef sender) {
+    private void onUpdateRequest(Integer newState, ActorRef sender) throws InterruptedException {
         if (this.isCoordinator) {
             this.unstableState = newState;
             this.pendingClient = sender;
             startQuorum(newState);
         } else {
-            this.coordinator.tell(new Message<Integer>(MessageTypes.UPDATE_REQUEST, newState), getSelf());
+            CommunicationWrapper.send(this.coordinator, new Message<Integer>(MessageTypes.UPDATE_REQUEST, newState), getSelf());
         }
     }
 
     // Coordinator sends vote requests to all cohorts (included himself)
-    private void startQuorum(int newState) {
+    private void startQuorum(int newState) throws InterruptedException {
         for (ActorRef cohort : this.cohorts) {
-            cohort.tell(new Message<Integer>(MessageTypes.UPDATE, newState), getSelf());
+            CommunicationWrapper.send(cohort, new Message<Integer>(MessageTypes.UPDATE, newState), getSelf());
         }
     }
 
     // Cohorts receive vote request from coordinator
-    private void onUpdate(int newState) {
+    private void onUpdate(int newState) throws InterruptedException {
         ActorRef sender = getSender();
-        sender.tell(new Message<Integer>(MessageTypes.ACK, null), getSelf());
+        CommunicationWrapper.send(sender, new Message<Integer>(MessageTypes.ACK, null), getSelf());
     }
 
     // Coordinator receives votes from cohorts and decide when majority is reached
-    private void onACK() {
+    private void onACK() throws InterruptedException {
         this.voters++;
         if (this.voters >= this.cohorts.size() / 2 + 1) {
             for (ActorRef cohort : this.cohorts) {
-                cohort.tell(new Message<Integer>(MessageTypes.WRITEOK, this.unstableState), getSelf());
+                CommunicationWrapper.send(cohort, new Message<Integer>(MessageTypes.WRITEOK, this.unstableState), getSelf());
             }
             this.voters = 0;
         }
@@ -98,19 +99,19 @@ public class Cohort extends AbstractActor {
 
     // Cohorts receive update confirm from coordinator (included himself)
     // change their state, reset temporary values and increment sequence number
-    private void onWriteOk(Integer newState) {
+    private void onWriteOk(Integer newState) throws InterruptedException {
         this.state = newState;
         this.unstableState = 0;
         this.updateIdentifier.setSequence(this.updateIdentifier.getSequence() + 1);
         this.history.put(this.updateIdentifier, this.state);
         this.logger.logUpdate(getSelf().path().name(), this.updateIdentifier.getEpoch(), this.updateIdentifier.getSequence(), this.state);
         if (this.pendingClient != null) {
-            this.pendingClient.tell(new Message<Integer>(MessageTypes.WRITEOK, this.state), getSelf());
+            CommunicationWrapper.send(this.pendingClient, new Message<Integer>(MessageTypes.WRITEOK, this.state), getSelf());
             this.pendingClient = null;
         }
     }
 
-    private void onMessage(Message<?> message) {
+    private void onMessage(Message<?> message) throws InterruptedException {
         ActorRef sender = getSender();
         switch (message.topic) {
             case SET_COORDINATOR:

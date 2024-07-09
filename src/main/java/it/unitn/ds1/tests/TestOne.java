@@ -8,6 +8,7 @@ import it.unitn.ds1.loggers.LogParser;
 import it.unitn.ds1.loggers.Logger;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.messages.MessageTypes;
+import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -22,7 +23,7 @@ import java.util.List;
 public class TestOne {
 
     @BeforeAll
-    static void setUp() throws IOException {
+    static void setUp() throws IOException, InterruptedException {
         // Create a test log file
         DotenvLoader dotenv = DotenvLoader.getInstance();
         Logger.clearFile(dotenv.getLogPath());
@@ -53,8 +54,8 @@ public class TestOne {
 
         // Link all cohorts with each other
         for (ActorRef cohort : cohorts) {
-            cohort.tell(new Message<List<ActorRef>>(MessageTypes.SET_NEIGHBORS, cohorts), ActorRef.noSender());
-            cohort.tell(new Message<ActorRef>(MessageTypes.SET_COORDINATOR, cohorts.get(0)), ActorRef.noSender());
+            CommunicationWrapper.send(cohort, new Message<List<ActorRef>>(MessageTypes.SET_NEIGHBORS, cohorts), ActorRef.noSender());
+            CommunicationWrapper.send(cohort, new Message<ActorRef>(MessageTypes.SET_COORDINATOR, cohorts.get(0)), ActorRef.noSender());
         }
 
         List<ActorRef> clients = new ArrayList<ActorRef>(N_COHORTS + 1);
@@ -67,23 +68,21 @@ public class TestOne {
         }
 
         Message<Object> msg1 = new Message<Object>(MessageTypes.UPDATE_REQUEST, 2000000);
-        cohorts.get(0).tell(msg1, clients.get(0));
+        CommunicationWrapper.send(cohorts.get(0), msg1, clients.get(0));
 
         try {
-            Thread.sleep(1000);
+            Thread.sleep(2000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
-        } finally {
-            system.terminate();
         }
 
         Message<Object> msg2 = new Message<Object>(MessageTypes.READ_REQUEST, null);
-        cohorts.get(0).tell(msg2, clients.get(0));
+        CommunicationWrapper.send(cohorts.get(0), msg2, clients.get(0));
+        System.out.println("finished setup test one");
     }
 
     @Test
-    void testParseLogFile() throws IOException {
-        setUp();
+    void testParseLogFile() throws IOException, InterruptedException {
         LogParser logParser = new LogParser(DotenvLoader.getInstance().getLogPath());
         List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
         int N_COHORTS = DotenvLoader.getInstance().getNCohorts();

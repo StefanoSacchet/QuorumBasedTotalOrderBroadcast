@@ -1,4 +1,4 @@
-package it.unitn.ds1.Loggers;
+package it.unitn.ds1.loggers;
 
 import java.io.IOException;
 import java.nio.file.Files;

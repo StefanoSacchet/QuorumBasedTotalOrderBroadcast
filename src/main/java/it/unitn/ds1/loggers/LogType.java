@@ -1,4 +1,4 @@
-package it.unitn.ds1.Loggers;
+package it.unitn.ds1.loggers;
 
 public enum LogType {
     UPDATE,

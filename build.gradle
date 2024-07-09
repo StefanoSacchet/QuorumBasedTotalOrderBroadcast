@@ -15,7 +15,6 @@ def versions = [
         ScalaBinary: "2.13",
         AkkaVersion: "2.9.0",
         LogBackVersion: "1.2.3",
-        JunitVersion: "4.13.1"
 ]
 
 dependencies {
@@ -24,8 +23,8 @@ dependencies {
     implementation 'io.github.cdimascio:dotenv-java:3.0.0'
 
     testImplementation "com.typesafe.akka:akka-actor-testkit-typed_${versions.ScalaBinary}:${versions.AkkaVersion}"
-    testImplementation "junit:junit:${versions.JunitVersion}"
     implementation "ch.qos.logback:logback-classic:${versions.LogBackVersion}"
+    implementation 'org.junit.jupiter:junit-jupiter:5.10.3'
 }
 
 compileJava {
@@ -36,4 +35,8 @@ mainClassName = "it.unitn.ds1.HelloExample"
 
 run {
     standardInput = System.in
+}
+
+test {
+    useJUnitPlatform()
 }

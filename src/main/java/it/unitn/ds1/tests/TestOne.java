@@ -1,27 +1,32 @@
-package it.unitn.ds1;
-
-import java.io.IOException;
-import java.util.List;
-import java.util.ArrayList;
+package it.unitn.ds1.tests;
 
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
-
-
+import it.unitn.ds1.Client;
+import it.unitn.ds1.Cohort;
 import it.unitn.ds1.loggers.LogParser;
-import it.unitn.ds1.messages.MessageTypes;
-import it.unitn.ds1.messages.Message;
-import it.unitn.ds1.tools.DotenvLoader;
 import it.unitn.ds1.loggers.Logger;
+import it.unitn.ds1.messages.Message;
+import it.unitn.ds1.messages.MessageTypes;
+import it.unitn.ds1.tools.DotenvLoader;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
-public class Main {
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 
-    public static void main(String[] args) {
+public class TestOne {
+
+    @BeforeAll
+    static void setUp() throws IOException {
+        // Create a test log file
         DotenvLoader dotenv = DotenvLoader.getInstance();
         Logger.clearFile(dotenv.getLogPath());
         int N_COHORTS = dotenv.getNCohorts();
-
 
         // Create an actor system named "ringTopologySystem"
         final ActorSystem system = ActorSystem.create("ringTopologySystem");
@@ -74,14 +79,18 @@ public class Main {
 
         Message<Object> msg2 = new Message<Object>(MessageTypes.READ_REQUEST, null);
         cohorts.get(0).tell(msg2, clients.get(0));
+    }
 
-//        System.out.println("Current java version is " + System.getProperty("java.version"));
-//        System.out.println(">>> Press ENTER to exit <<<");
-//        try {
-//            System.in.read();
-//        } catch (IOException ioe) {
-//        } finally {
-//            system.terminate();
-//        }
+    @Test
+    void testParseLogFile() throws IOException {
+        setUp();
+        LogParser logParser = new LogParser(DotenvLoader.getInstance().getLogPath());
+        List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
+        int N_COHORTS = DotenvLoader.getInstance().getNCohorts();
+        int expected = N_COHORTS + 1 + 2; // 1 read request and 1 update request
+
+        assertEquals(expected, logEntries.size(), "There should be" + expected + " log entries");
+
     }
 }
+

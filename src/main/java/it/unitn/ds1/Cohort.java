@@ -7,7 +7,7 @@ import akka.actor.Props;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.tools.DotenvLoader;
-import it.unitn.ds1.Loggers.CohortLogger;
+import it.unitn.ds1.loggers.CohortLogger;
 
 import java.util.HashMap;
 import java.util.List;
@@ -30,7 +30,7 @@ public class Cohort extends AbstractActor {
 
     private final CohortLogger logger;
 
-    static Props props(boolean isCoordinator) {
+    public static Props props(boolean isCoordinator) {
         return Props.create(Cohort.class, () -> new Cohort(isCoordinator));
     }
 

@@ -7,7 +7,7 @@ import akka.actor.Props;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.tools.DotenvLoader;
-import it.unitn.ds1.tools.Loggers.CohortLogger;
+import it.unitn.ds1.Loggers.CohortLogger;
 
 import java.util.HashMap;
 import java.util.List;

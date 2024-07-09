@@ -1,8 +1,7 @@
-package it.unitn.ds1.tools.Loggers;
+package it.unitn.ds1.Loggers;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.io.IOException;
 import java.nio.file.Path;
 

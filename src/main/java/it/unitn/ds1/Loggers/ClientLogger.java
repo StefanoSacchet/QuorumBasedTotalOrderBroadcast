@@ -1,6 +1,4 @@
-package it.unitn.ds1.tools.Loggers;
-
-import it.unitn.ds1.tools.Loggers.Logger;
+package it.unitn.ds1.Loggers;
 
 import java.io.IOException;
 import java.nio.file.Files;

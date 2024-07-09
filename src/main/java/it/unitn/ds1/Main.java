@@ -8,10 +8,11 @@ import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 
 
+import it.unitn.ds1.Loggers.LogParser;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.tools.DotenvLoader;
-import it.unitn.ds1.tools.Loggers.Logger;
+import it.unitn.ds1.Loggers.Logger;
 
 public class Main {
 
@@ -72,6 +73,8 @@ public class Main {
 
         Message<Object> msg2 = new Message<Object>(MessageTypes.READ_REQUEST, null);
         cohorts.get(0).tell(msg2, clients.get(0));
+
+        LogParser lp = new LogParser(dotenv.getLogPath());
 
 //        System.out.println("Current java version is " + System.getProperty("java.version"));
 //        System.out.println(">>> Press ENTER to exit <<<");

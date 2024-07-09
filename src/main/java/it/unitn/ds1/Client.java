@@ -5,7 +5,7 @@ import akka.actor.Props;
 import akka.actor.ActorRef;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.tools.DotenvLoader;
-import it.unitn.ds1.tools.Loggers.ClientLogger;
+import it.unitn.ds1.Loggers.ClientLogger;
 
 public class Client extends AbstractActor {
     public ActorRef rxCohort;

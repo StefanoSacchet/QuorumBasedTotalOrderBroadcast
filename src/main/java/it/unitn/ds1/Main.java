@@ -9,7 +9,7 @@ import akka.actor.ActorSystem;
 
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.messages.Message;
-import it.unitn.ds1.tools.Logger;
+import it.unitn.ds1.tools.Loggers.Logger;
 
 public class Main {
     final static int N_COHORTS = 5;

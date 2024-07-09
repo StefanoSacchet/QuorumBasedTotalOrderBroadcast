@@ -6,7 +6,7 @@ import akka.actor.Props;
 
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.messages.MessageTypes;
-import it.unitn.ds1.tools.Logger;
+import it.unitn.ds1.tools.Loggers.CohortLogger;
 
 import java.util.HashMap;
 import java.util.List;
@@ -27,7 +27,7 @@ public class Cohort extends AbstractActor {
     private final UpdateIdentifier updateIdentifier;
     private HashMap<UpdateIdentifier, Integer> history;
 
-    private Logger logger;
+    private final CohortLogger logger;
 
     static Props props(boolean isCoordinator) {
         return Props.create(Cohort.class, () -> new Cohort(isCoordinator));
@@ -41,7 +41,7 @@ public class Cohort extends AbstractActor {
         this.pendingClient = null;
         this.updateIdentifier = new UpdateIdentifier(0, 0);
         this.history = new HashMap<UpdateIdentifier, Integer>();
-        this.logger = new Logger("./logs/log.log");
+        this.logger = new CohortLogger("./logs/log.log");
     }
 
     private void onSetNeighbors(List<ActorRef> cohorts) {
@@ -58,6 +58,7 @@ public class Cohort extends AbstractActor {
 
     private void onReadRequest(ActorRef sender) {
         sender.tell(new Message<Integer>(MessageTypes.READ, this.state), getSelf());
+        this.logger.logReadReq(sender.path().name(), getSelf().path().name());
     }
 
     private void onUpdateRequest(Integer newState, ActorRef sender) {
@@ -101,7 +102,7 @@ public class Cohort extends AbstractActor {
         this.unstableState = 0;
         this.updateIdentifier.setSequence(this.updateIdentifier.getSequence() + 1);
         this.history.put(this.updateIdentifier, this.state);
-        this.logger.appendToLogFile(getSelf().path().name(), this.updateIdentifier.getEpoch(), this.updateIdentifier.getSequence(), this.state);
+        this.logger.logUpdate(getSelf().path().name(), this.updateIdentifier.getEpoch(), this.updateIdentifier.getSequence(), this.state);
         if (this.pendingClient != null) {
             this.pendingClient.tell(new Message<Integer>(MessageTypes.WRITEOK, this.state), getSelf());
             this.pendingClient = null;

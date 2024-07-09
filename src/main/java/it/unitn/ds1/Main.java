@@ -9,11 +9,14 @@ import akka.actor.ActorSystem;
 
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.messages.Message;
+import it.unitn.ds1.tools.Logger;
 
 public class Main {
     final static int N_COHORTS = 5;
 
     public static void main(String[] args) {
+        Logger.clearFile("./logs/log.log");
+
         // Create an actor system named "ringTopologySystem"
         final ActorSystem system = ActorSystem.create("ringTopologySystem");
 
@@ -32,7 +35,7 @@ public class Main {
         for (int i = 1; i <= N_COHORTS; i++) {
             ActorRef cohort = system.actorOf(
                     Cohort.props(false), // specifying this cohort as not the coordinator
-                    "cohort_" + i         // the new actor name (unique within the system)
+                    "cohort_" + i
             );
             cohorts.add(cohort);
         }

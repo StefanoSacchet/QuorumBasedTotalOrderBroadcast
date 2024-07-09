@@ -2,33 +2,35 @@ package it.unitn.ds1;
 
 import java.io.Serializable;
 
+import it.unitn.ds1.tools.Pair;
+
 public class UpdateIdentifier implements Serializable {
-    private int epoch;
-    private int sequence;
+    public Pair<Integer, Integer> updateIdentifier;
 
     public UpdateIdentifier(int epoch, int sequence) {
-        this.epoch = epoch;
-        this.sequence = sequence;
+        this.updateIdentifier = new Pair<>(epoch, sequence);
     }
 
     // Getters
     public int getEpoch() {
-        return epoch;
+        return this.updateIdentifier.getFirst();
     }
+
     public int getSequence() {
-        return sequence;
+        return this.updateIdentifier.getSecond();
     }
 
     // Setters
     public void setEpoch(int epoch) {
-        this.epoch = epoch;
+        this.updateIdentifier.setFirst(epoch);
     }
+
     public void setSequence(int sequence) {
-        this.sequence = sequence;
+        this.updateIdentifier.setSecond(sequence);
     }
 
     @Override
     public String toString() {
-        return "(" + epoch + ", " + sequence + ")";
+        return "(" + this.getEpoch() + ", " + this.getSequence() + ")";
     }
 }

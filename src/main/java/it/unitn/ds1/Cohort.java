@@ -1,17 +1,14 @@
 package it.unitn.ds1;
 
 import akka.actor.AbstractActor;
-import akka.actor.Actor;
 import akka.actor.ActorRef;
 import akka.actor.Props;
 
-import com.typesafe.config.ConfigException;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.messages.MessageTypes;
-import it.unitn.ds1.messages.SetNeighbors;
-import it.unitn.ds1.messages.SetCoordinator;
-import it.unitn.ds1.tools.Pair;
+import it.unitn.ds1.tools.Logger;
 
+import java.util.HashMap;
 import java.util.List;
 
 public class Cohort extends AbstractActor {
@@ -27,7 +24,10 @@ public class Cohort extends AbstractActor {
     private int unstableState;
     private ActorRef pendingClient;
 
-    private UpdateIdentifier updateIdentifier;
+    private final UpdateIdentifier updateIdentifier;
+    private HashMap<UpdateIdentifier, Integer> history;
+
+    private Logger logger;
 
     static Props props(boolean isCoordinator) {
         return Props.create(Cohort.class, () -> new Cohort(isCoordinator));
@@ -40,6 +40,8 @@ public class Cohort extends AbstractActor {
         this.unstableState = 0;
         this.pendingClient = null;
         this.updateIdentifier = new UpdateIdentifier(0, 0);
+        this.history = new HashMap<UpdateIdentifier, Integer>();
+        this.logger = new Logger("./logs/log.log");
     }
 
     private void onSetNeighbors(List<ActorRef> cohorts) {
@@ -55,7 +57,7 @@ public class Cohort extends AbstractActor {
     }
 
     private void onReadRequest(ActorRef sender) {
-        sender.tell(new Message<>(MessageTypes.READ, this.state), getSelf());
+        sender.tell(new Message<Integer>(MessageTypes.READ, this.state), getSelf());
     }
 
     private void onUpdateRequest(Integer newState, ActorRef sender) {
@@ -64,29 +66,29 @@ public class Cohort extends AbstractActor {
             this.pendingClient = sender;
             startQuorum(newState);
         } else {
-            this.coordinator.tell(new Message<>(MessageTypes.UPDATE_REQUEST, newState), getSelf());
+            this.coordinator.tell(new Message<Integer>(MessageTypes.UPDATE_REQUEST, newState), getSelf());
         }
     }
 
     // Coordinator sends vote requests to all cohorts (included himself)
     private void startQuorum(int newState) {
         for (ActorRef cohort : this.cohorts) {
-            cohort.tell(new Message<>(MessageTypes.UPDATE, newState), getSelf());
+            cohort.tell(new Message<Integer>(MessageTypes.UPDATE, newState), getSelf());
         }
     }
 
     // Cohorts receive vote request from coordinator
     private void onUpdate(int newState) {
         ActorRef sender = getSender();
-        sender.tell(new Message<>(MessageTypes.ACK, null), getSelf());
+        sender.tell(new Message<Integer>(MessageTypes.ACK, null), getSelf());
     }
 
     // Coordinator receives votes from cohorts and decide when majority is reached
     private void onACK() {
         this.voters++;
-        if (this.voters >= Math.ceil(this.cohorts.size() / 2)) {
+        if (this.voters >= this.cohorts.size() / 2 + 1) {
             for (ActorRef cohort : this.cohorts) {
-                cohort.tell(new Message<>(MessageTypes.WRITEOK, this.unstableState), getSelf());
+                cohort.tell(new Message<Integer>(MessageTypes.WRITEOK, this.unstableState), getSelf());
             }
             this.voters = 0;
         }
@@ -98,8 +100,10 @@ public class Cohort extends AbstractActor {
         this.state = newState;
         this.unstableState = 0;
         this.updateIdentifier.setSequence(this.updateIdentifier.getSequence() + 1);
+        this.history.put(this.updateIdentifier, this.state);
+        this.logger.appendToLogFile(getSelf().path().name(), this.updateIdentifier.getEpoch(), this.updateIdentifier.getSequence(), this.state);
         if (this.pendingClient != null) {
-            this.pendingClient.tell(new Message<>(MessageTypes.WRITEOK, this.state), getSelf());
+            this.pendingClient.tell(new Message<Integer>(MessageTypes.WRITEOK, this.state), getSelf());
             this.pendingClient = null;
         }
     }
@@ -121,7 +125,6 @@ public class Cohort extends AbstractActor {
                 break;
             case UPDATE_REQUEST:
                 assert message.payload instanceof Integer;
-                System.out.println("Making update Request");
                 onUpdateRequest((Integer) message.payload, sender);
                 break;
             case UPDATE:

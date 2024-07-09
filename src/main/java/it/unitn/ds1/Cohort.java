@@ -6,6 +6,7 @@ import akka.actor.Props;
 
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.messages.MessageTypes;
+import it.unitn.ds1.tools.DotenvLoader;
 import it.unitn.ds1.tools.Loggers.CohortLogger;
 
 import java.util.HashMap;
@@ -41,7 +42,7 @@ public class Cohort extends AbstractActor {
         this.pendingClient = null;
         this.updateIdentifier = new UpdateIdentifier(0, 0);
         this.history = new HashMap<UpdateIdentifier, Integer>();
-        this.logger = new CohortLogger("./logs/log.log");
+        this.logger = new CohortLogger(DotenvLoader.getInstance().getLogPath());
     }
 
     private void onSetNeighbors(List<ActorRef> cohorts) {

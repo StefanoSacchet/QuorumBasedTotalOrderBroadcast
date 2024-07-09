@@ -7,15 +7,20 @@ import java.util.ArrayList;
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 
+
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.messages.Message;
+import it.unitn.ds1.tools.DotenvLoader;
 import it.unitn.ds1.tools.Loggers.Logger;
 
 public class Main {
-    final static int N_COHORTS = 5;
+
 
     public static void main(String[] args) {
-        Logger.clearFile("./logs/log.log");
+        DotenvLoader dotenv = DotenvLoader.getInstance();
+        Logger.clearFile(dotenv.getLogPath());
+        int N_COHORTS = dotenv.getNCohorts();
+
 
         // Create an actor system named "ringTopologySystem"
         final ActorSystem system = ActorSystem.create("ringTopologySystem");

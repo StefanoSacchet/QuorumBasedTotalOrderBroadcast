@@ -21,6 +21,7 @@ def versions = [
 dependencies {
     implementation "com.typesafe.akka:akka-bom_${versions.ScalaBinary}:${versions.AkkaVersion}"
     implementation "com.typesafe.akka:akka-actor-typed_${versions.ScalaBinary}:${versions.AkkaVersion}"
+    implementation 'io.github.cdimascio:dotenv-java:3.0.0'
 
     testImplementation "com.typesafe.akka:akka-actor-testkit-typed_${versions.ScalaBinary}:${versions.AkkaVersion}"
     testImplementation "junit:junit:${versions.JunitVersion}"

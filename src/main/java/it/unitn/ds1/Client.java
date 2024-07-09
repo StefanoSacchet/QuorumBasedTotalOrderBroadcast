@@ -4,6 +4,7 @@ import akka.actor.AbstractActor;
 import akka.actor.Props;
 import akka.actor.ActorRef;
 import it.unitn.ds1.messages.Message;
+import it.unitn.ds1.tools.DotenvLoader;
 import it.unitn.ds1.tools.Loggers.ClientLogger;
 
 public class Client extends AbstractActor {
@@ -12,7 +13,7 @@ public class Client extends AbstractActor {
 
     public Client(ActorRef rxCohort) {
         this.rxCohort = rxCohort;
-        this.logger = new ClientLogger("./logs/log.log");
+        this.logger = new ClientLogger(DotenvLoader.getInstance().getLogPath());
     }
 
     static Props props(ActorRef rxCohort) {

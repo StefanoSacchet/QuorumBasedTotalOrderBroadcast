@@ -15,3 +15,4 @@ public class Message<T> implements Serializable {
     }
 
 }
+

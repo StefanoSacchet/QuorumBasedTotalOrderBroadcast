@@ -71,7 +71,7 @@ public class TestOne {
         CommunicationWrapper.send(cohorts.get(0), msg1, clients.get(0));
 
         try {
-            Thread.sleep(2000);
+            Thread.sleep(1000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
@@ -79,6 +79,12 @@ public class TestOne {
         Message<Object> msg2 = new Message<Object>(MessageTypes.READ_REQUEST, null);
         CommunicationWrapper.send(cohorts.get(0), msg2, clients.get(0));
         System.out.println("finished setup test one");
+
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Test

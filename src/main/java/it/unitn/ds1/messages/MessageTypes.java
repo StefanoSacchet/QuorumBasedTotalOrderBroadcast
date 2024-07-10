@@ -12,6 +12,7 @@ public enum MessageTypes {
     ELECTION,
     SYNC,
     ACK,
+    CRASH,
     // todo aggiungere i messaggi per 2pc
 
 }

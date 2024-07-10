@@ -5,6 +5,7 @@ import akka.actor.ActorRef;
 import akka.actor.Props;
 
 import it.unitn.ds1.messages.Message;
+import it.unitn.ds1.messages.MessageCrash;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
@@ -15,6 +16,7 @@ import java.util.List;
 
 public class Cohort extends AbstractActor {
     private boolean isCoordinator;
+    private boolean isCrashed;
     private ActorRef predecessor;
     private ActorRef successor;
 
@@ -37,6 +39,7 @@ public class Cohort extends AbstractActor {
 
     public Cohort(boolean isCoordinator) {
         this.isCoordinator = isCoordinator;
+        this.isCrashed = false;
         this.state = 0;
         this.voters = 0;
         this.unstableState = 0;
@@ -164,9 +167,22 @@ public class Cohort extends AbstractActor {
         }
     }
 
+    private void onCrashMsg(MessageCrash message) {
+        this.isCrashed = true;
+        getContext().become(crashed());
+    }
+
     // Here we define the mapping between the received message types and our actor methods
     @Override
     public Receive createReceive() {
-        return receiveBuilder().match(Message.class, this::onMessage).build();
+        return receiveBuilder().match(Message.class, this::onMessage).match(MessageCrash.class, this::onCrashMsg).build();
+    }
+
+    final AbstractActor.Receive crashed() {
+        return receiveBuilder()
+                .matchAny(msg -> {
+                })
+                //.matchAny(msg -> System.out.println(getSelf().path().name() + " ignoring " + msg.getClass().getSimpleName() + " (crashed)"))
+                .build();
     }
 }

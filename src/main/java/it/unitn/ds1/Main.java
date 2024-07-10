@@ -34,18 +34,15 @@ public class Main {
         List<ActorRef> cohorts = new ArrayList<ActorRef>(N_COHORTS + 1);
 
         // Create the Coordinator cohort
-        ActorRef coordinator = system.actorOf(
-                Cohort.props(true), // specifying this cohort as the coordinator
+        ActorRef coordinator = system.actorOf(Cohort.props(true), // specifying this cohort as the coordinator
                 "cohort_0"       // the new actor name (unique within the system)
         );
         cohorts.add(coordinator);
 
         // Create multiple Cohort actors
         for (int i = 1; i <= N_COHORTS; i++) {
-            ActorRef cohort = system.actorOf(
-                    Cohort.props(false), // specifying this cohort as not the coordinator
-                    "cohort_" + i
-            );
+            ActorRef cohort = system.actorOf(Cohort.props(false), // specifying this cohort as not the coordinator
+                    "cohort_" + i);
             cohorts.add(cohort);
         }
 
@@ -57,10 +54,7 @@ public class Main {
 
         List<ActorRef> clients = new ArrayList<ActorRef>(N_COHORTS + 1);
         for (int i = 0; i <= N_COHORTS; i++) {
-            ActorRef client = system.actorOf(
-                    Client.props(cohorts.get(i)),
-                    "client_" + i
-            );
+            ActorRef client = system.actorOf(Client.props(cohorts.get(i)), "client_" + i);
             clients.add(client);
         }
 
@@ -74,11 +68,15 @@ public class Main {
             throw new RuntimeException(e);
         }
 
-
         Message<Object> msg2 = new Message<Object>(MessageTypes.READ_REQUEST, null);
         CommunicationWrapper.send(cohorts.get(0), msg2, clients.get(0));
-        System.out.println("finished");
-        system.terminate();
         
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } finally {
+            system.terminate();
+        }
     }
 }

@@ -85,7 +85,7 @@ public class LogParser extends Logger {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            throw new RuntimeException(e);
         }
         return logEntries;
     }

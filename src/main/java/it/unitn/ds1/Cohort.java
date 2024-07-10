@@ -111,6 +111,12 @@ public class Cohort extends AbstractActor {
         }
     }
 
+    private boolean isNeighborListCorrect(List<?> neighbors) {
+//        List<?> rawList = (List<?>) neighbors;
+        // Check if all elements in the list are instances of ActorRef
+        return neighbors.stream().allMatch(element -> element instanceof ActorRef);
+    }
+
     private void onMessage(Message<?> message) throws InterruptedException {
         ActorRef sender = getSender();
         switch (message.topic) {
@@ -120,7 +126,14 @@ public class Cohort extends AbstractActor {
                 break;
             case SET_NEIGHBORS:
                 assert message.payload instanceof List<?>;
-                onSetNeighbors((List<ActorRef>) message.payload);
+                if (isNeighborListCorrect((List<?>) message.payload)) {
+                    // This cast is safe because we've checked all elements are ActorRef instances
+                    @SuppressWarnings("unchecked") // Suppresses unchecked warning for this specific cast
+                    List<ActorRef> actorList = (List<ActorRef>) message.payload;
+                    onSetNeighbors(actorList);
+                } else {
+                    throw new InterruptedException("Error: Payload contains non-ActorRef elements.");
+                }
                 break;
             case READ_REQUEST:
                 assert message.payload == null;
@@ -139,8 +152,7 @@ public class Cohort extends AbstractActor {
                 if (this.isCoordinator) {
                     onACK();
                 } else {
-                    Exception e = new Exception("Not a coordinator");
-                    e.printStackTrace();
+                    throw new InterruptedException("Not a coordinator");
                 }
                 break;
             case WRITEOK:

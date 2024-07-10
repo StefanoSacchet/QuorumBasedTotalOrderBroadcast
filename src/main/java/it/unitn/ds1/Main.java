@@ -32,7 +32,7 @@ public class Main {
 
         // Create an array to hold references to the cohorts
 
-        List<ActorRef> cohorts = new ArrayList<ActorRef>(N_COHORTS + 1);
+        List<ActorRef> cohorts = new ArrayList<ActorRef>(N_COHORTS);
 
         // Create the Coordinator cohort
         ActorRef coordinator = system.actorOf(Cohort.props(true), // specifying this cohort as the coordinator
@@ -41,7 +41,7 @@ public class Main {
         cohorts.add(coordinator);
 
         // Create multiple Cohort actors
-        for (int i = 1; i <= N_COHORTS; i++) {
+        for (int i = 1; i < N_COHORTS; i++) {
             ActorRef cohort = system.actorOf(Cohort.props(false), // specifying this cohort as not the coordinator
                     "cohort_" + i);
             cohorts.add(cohort);
@@ -49,26 +49,31 @@ public class Main {
 
         // Link all cohorts with each other
         for (ActorRef cohort : cohorts) {
-            CommunicationWrapper.send(cohort, new Message<List<ActorRef>>(MessageTypes.SET_NEIGHBORS, cohorts), ActorRef.noSender());
+            List<ActorRef> copyCohorts = new ArrayList<>(cohorts);
+            CommunicationWrapper.send(cohort, new Message<List<ActorRef>>(MessageTypes.SET_NEIGHBORS, copyCohorts), ActorRef.noSender());
             CommunicationWrapper.send(cohort, new Message<ActorRef>(MessageTypes.SET_COORDINATOR, cohorts.get(0)), ActorRef.noSender());
         }
 
-        List<ActorRef> clients = new ArrayList<ActorRef>(N_COHORTS + 1);
-        for (int i = 0; i <= N_COHORTS; i++) {
+        List<ActorRef> clients = new ArrayList<ActorRef>(N_COHORTS);
+        for (int i = 0; i < N_COHORTS; i++) {
             ActorRef client = system.actorOf(Client.props(cohorts.get(i)), "client_" + i);
             clients.add(client);
         }
 
         // make a given cohort crash
-        ActorRef god = system.actorOf(Cohort.props(false), "god");
         CommunicationWrapper.send(cohorts.get(2), new MessageCrash());
+
+        // tell all cohorts to remove the crashed one
+        for (ActorRef cohort : cohorts) {
+            CommunicationWrapper.send(cohort, new Message<>(MessageTypes.REMOVE_CRASHED, cohorts.get(2)), cohorts.get(1));
+        }
 
         Message<Object> msg1 = new Message<Object>(MessageTypes.UPDATE_REQUEST, 2000000);
         CommunicationWrapper.send(cohorts.get(0), msg1, clients.get(0));
         System.out.println("sent update request");
 
         try {
-            Thread.sleep(2000);
+            Thread.sleep(1000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }

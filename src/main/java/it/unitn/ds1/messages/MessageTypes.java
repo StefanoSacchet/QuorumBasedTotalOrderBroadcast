@@ -13,6 +13,7 @@ public enum MessageTypes {
     SYNC,
     ACK,
     CRASH,
+    REMOVE_CRASHED,
     // todo aggiungere i messaggi per 2pc
 
 }

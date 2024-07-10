@@ -114,6 +114,12 @@ public class Cohort extends AbstractActor {
         }
     }
 
+    private void onRemoveCrashed(ActorRef crashed) {
+        this.cohorts.remove(crashed);
+        System.out.println(getSelf().path().name() + " removing " + crashed.path().name() + " from cohorts");
+        //TODO update ring topology
+    }
+
     private boolean isNeighborListCorrect(List<?> neighbors) {
 //        List<?> rawList = (List<?>) neighbors;
         // Check if all elements in the list are instances of ActorRef
@@ -162,6 +168,10 @@ public class Cohort extends AbstractActor {
                 assert message.payload instanceof Integer;
                 onWriteOk((Integer) message.payload);
                 break;
+            case REMOVE_CRASHED:
+                assert message.payload instanceof ActorRef;
+                onRemoveCrashed((ActorRef) message.payload);
+                break;
             default:
                 System.out.println("Received message: " + message.topic + " with payload: " + message.payload);
         }
@@ -180,9 +190,10 @@ public class Cohort extends AbstractActor {
 
     final AbstractActor.Receive crashed() {
         return receiveBuilder()
-                .matchAny(msg -> {
-                })
-                //.matchAny(msg -> System.out.println(getSelf().path().name() + " ignoring " + msg.getClass().getSimpleName() + " (crashed)"))
+                .matchAny(msg -> {})
+//                .matchAny(msg -> {
+//                    System.out.println("deferring message"+ msg.toString());
+//                })
                 .build();
     }
 }

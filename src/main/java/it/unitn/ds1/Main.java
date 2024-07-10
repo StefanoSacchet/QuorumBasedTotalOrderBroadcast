@@ -10,6 +10,7 @@ import akka.actor.ActorSystem;
 
 import it.unitn.ds1.loggers.LogParser;
 import it.unitn.ds1.messages.MessageCrash;
+import it.unitn.ds1.messages.MessageTest;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.tools.CommunicationWrapper;
@@ -61,9 +62,20 @@ public class Main {
         }
 
         // make a given cohort crash
+        CommunicationWrapper.send(clients.get(2), new MessageTest(MessageTypes.TEST_READ));
+
+        try{
+            Thread.sleep(2000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
         CommunicationWrapper.send(cohorts.get(2), new MessageCrash());
 
-        // tell all cohorts to remove the crashed one
+
+        CommunicationWrapper.send(clients.get(2), new MessageTest(MessageTypes.TEST_READ));
+
+         // tell all cohorts to remove the crashed one
         for (ActorRef cohort : cohorts) {
             CommunicationWrapper.send(cohort, new Message<>(MessageTypes.REMOVE_CRASHED, cohorts.get(2)), cohorts.get(1));
         }

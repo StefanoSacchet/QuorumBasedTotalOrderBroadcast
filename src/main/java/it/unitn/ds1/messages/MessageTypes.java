@@ -13,6 +13,9 @@ public enum MessageTypes {
     SYNC,
     ACK,
     CRASH,
+    TIMEOUT,
+    TEST_READ,
+    TEST_UPDATE,
     REMOVE_CRASHED,
     // todo aggiungere i messaggi per 2pc
 

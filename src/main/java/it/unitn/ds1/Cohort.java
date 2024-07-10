@@ -2,6 +2,7 @@ package it.unitn.ds1;
 
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
+import akka.actor.Cancellable;
 import akka.actor.Props;
 
 import it.unitn.ds1.messages.Message;
@@ -10,9 +11,11 @@ import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
 import it.unitn.ds1.loggers.CohortLogger;
+import scala.concurrent.duration.Duration;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 public class Cohort extends AbstractActor {
     private boolean isCoordinator;
@@ -181,6 +184,7 @@ public class Cohort extends AbstractActor {
         this.isCrashed = true;
         getContext().become(crashed());
     }
+
 
     // Here we define the mapping between the received message types and our actor methods
     @Override

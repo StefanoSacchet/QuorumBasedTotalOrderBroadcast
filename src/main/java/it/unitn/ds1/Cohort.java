@@ -6,13 +6,14 @@ import akka.actor.Cancellable;
 import akka.actor.Props;
 
 import it.unitn.ds1.messages.Message;
-import it.unitn.ds1.messages.MessageCrash;
+import it.unitn.ds1.messages.MessageCommand;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
 import it.unitn.ds1.loggers.CohortLogger;
 import scala.concurrent.duration.Duration;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +37,11 @@ public class Cohort extends AbstractActor {
 
     private final CohortLogger logger;
 
+    // list for coordinator
+    private final List<Cancellable> coordinatorHeartbeatTimeouts;
+    // timer for cohort for heartbeat
+    private Cancellable cohortHeartbeatTimeout;
+
     public static Props props(boolean isCoordinator) {
         return Props.create(Cohort.class, () -> new Cohort(isCoordinator));
     }
@@ -50,18 +56,39 @@ public class Cohort extends AbstractActor {
         this.updateIdentifier = new UpdateIdentifier(0, 0);
         this.history = new HashMap<UpdateIdentifier, Integer>();
         this.logger = new CohortLogger(DotenvLoader.getInstance().getLogPath());
+        this.coordinatorHeartbeatTimeouts = new ArrayList<>();
+        this.cohortHeartbeatTimeout = null;
     }
 
-    private void onSetNeighbors(List<ActorRef> cohorts) {
-        //1st is predecessor, 2nd is successor
+    // coordinator sends heartbeat to all cohorts
+    private void startHeartbeat() throws InterruptedException {
+        for (ActorRef cohort : this.cohorts) {
+            if (cohort.path().name().equals(getSelf().path().name()))
+                continue;
+            Cancellable timer = getContext().system().scheduler().scheduleWithFixedDelay(
+                    Duration.create(1, TimeUnit.SECONDS), // when to start generating messages
+                    Duration.create(DotenvLoader.getInstance().getHeartbeat(), TimeUnit.MILLISECONDS), // how frequently generate them
+                    cohort, // destination actor reference
+                    new Message<>(MessageTypes.HEARTBEAT, null), // the message to send
+                    getContext().system().dispatcher(), // system dispatcher
+                    getSelf() // source of the message (myself)
+            );
+            this.coordinatorHeartbeatTimeouts.add(timer);
+        }
+    }
+
+    private void onSetNeighbors(List<ActorRef> cohorts) throws InterruptedException {
+        // TODO set predecessor and successor
+        // 1st is predecessor, 2nd is successor
         this.cohorts = cohorts;
-        // System.out.println("cohorts are " + this.cohorts);
+
+        if (this.isCoordinator) {
+            startHeartbeat();
+        }
     }
 
     private void onSetCoordinator(ActorRef coordinator) {
         this.coordinator = coordinator;
-//        String role = isCoordinator ? "Coordinator" : "Cohort";
-//        System.out.println(role + " " + getSelf().path().name() + " coordinator set to: " + coordinator.path().name());
     }
 
     private void onReadRequest(ActorRef sender) throws InterruptedException {
@@ -128,6 +155,25 @@ public class Cohort extends AbstractActor {
         return neighbors.stream().allMatch(element -> element instanceof ActorRef);
     }
 
+    private void onHeartbeat(ActorRef sender) {
+        System.out.println(getSelf().path().name() + " received heartbeat from " + sender.path().name());
+        if (this.cohortHeartbeatTimeout != null) {
+            this.cohortHeartbeatTimeout.cancel();
+        }
+        this.cohortHeartbeatTimeout = getContext().system().scheduler().scheduleOnce(
+                Duration.create(DotenvLoader.getInstance().getHeartbeatTimeout(), TimeUnit.MILLISECONDS), // when to start generating messages
+                getSelf(), // destination actor reference
+                new Message<>(MessageTypes.CRASH, this.coordinator), // the message to send
+                getContext().system().dispatcher(), // system dispatcher
+                getSelf() // source of the message (myself)
+        );
+    }
+
+    private void onCrashMsg(ActorRef crashed) {
+        System.out.println(getSelf().path().name() + " detected " + crashed.path().name() + " crashed");
+        this.logger.logCrash(getSelf().path().name(), crashed.path().name());
+    }
+
     private void onMessage(Message<?> message) throws InterruptedException {
         ActorRef sender = getSender();
         switch (message.topic) {
@@ -174,21 +220,46 @@ public class Cohort extends AbstractActor {
                 assert message.payload instanceof ActorRef;
                 onRemoveCrashed((ActorRef) message.payload);
                 break;
+            case HEARTBEAT:
+                onHeartbeat(sender);
+                break;
+            case CRASH:
+                assert message.payload instanceof ActorRef;
+                onCrashMsg((ActorRef) message.payload);
+                break;
             default:
                 System.out.println("Received message: " + message.topic + " with payload: " + message.payload);
         }
     }
 
-    private void onCrashMsg(MessageCrash message) {
+    private void onCommandCrash() {
+        // if coordinator crashes cancel all heartbeats
+        if (this.isCoordinator) {
+            for (Cancellable timer : this.coordinatorHeartbeatTimeouts) {
+                timer.cancel();
+            }
+        } else {
+            // TODO create method clear all timeouts
+            if (this.cohortHeartbeatTimeout != null) {
+                this.cohortHeartbeatTimeout.cancel();
+            }
+        }
+
         this.isCrashed = true;
         getContext().become(crashed());
     }
 
+    private void onCommandMsg(MessageCommand message) {
+        switch (message.topic) {
+            case CRASH -> onCommandCrash();
+            default -> System.out.println("Received unknown command: " + message.topic);
+        }
+    }
 
     // Here we define the mapping between the received message types and our actor methods
     @Override
     public Receive createReceive() {
-        return receiveBuilder().match(Message.class, this::onMessage).match(MessageCrash.class, this::onCrashMsg).build();
+        return receiveBuilder().match(Message.class, this::onMessage).match(MessageCommand.class, this::onCommandMsg).build();
     }
 
     final AbstractActor.Receive crashed() {

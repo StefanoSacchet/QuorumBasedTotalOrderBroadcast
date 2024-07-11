@@ -18,4 +18,13 @@ public class CohortLogger extends Logger {
             System.err.println("Error writing to log file: " + e.getMessage());
         }
     }
+
+    public void logCrash(String detectorID, String crashedID) {
+        String logEntry = String.format("Cohort %s detected %s crashed%n", detectorID, crashedID);
+        try {
+            Files.write(this.path, logEntry.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            System.err.println("Error writing to log file: " + e.getMessage());
+        }
+    }
 }

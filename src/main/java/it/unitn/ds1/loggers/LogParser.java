@@ -4,6 +4,7 @@ import it.unitn.ds1.UpdateIdentifier;
 
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class LogParser extends Logger {
@@ -112,6 +113,11 @@ public class LogParser extends Logger {
                         clientID = parts[1];
                         replicaID = parts[3];
                         logEntries.add(new LogEntry(type, clientID, replicaID, null, -1));
+                        break;
+                    case COHORT_DETECTS_COHORT_CRASH:
+                        String detector = parts[1];
+                        String crashed = parts[3];
+                        logEntries.add(new LogEntry(type, detector, crashed, null, -1));
                         break;
                     default:
                         throw new Exception("Invalid log entry");

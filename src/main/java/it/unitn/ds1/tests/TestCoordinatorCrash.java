@@ -8,7 +8,6 @@ import it.unitn.ds1.loggers.LogParser;
 import it.unitn.ds1.loggers.Logger;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.messages.MessageCommand;
-import it.unitn.ds1.messages.MessageCrash;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
@@ -21,9 +20,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-
-public class TestCrash {
-
+public class TestCoordinatorCrash {
     @BeforeAll
     static void setUp() throws IOException, InterruptedException {
         DotenvLoader dotenv = DotenvLoader.getInstance();
@@ -68,18 +65,16 @@ public class TestCrash {
         CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_READ));
 
         try {
-            Thread.sleep(2000);
+            Thread.sleep(1000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
 
         // make a given cohort crash
-        CommunicationWrapper.send(cohorts.get(2), new MessageCommand(MessageTypes.CRASH));
-
-        CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_READ));
+        CommunicationWrapper.send(cohorts.get(0), new MessageCommand(MessageTypes.CRASH));
 
         try {
-            Thread.sleep(2000);
+            Thread.sleep(3000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } finally {
@@ -91,7 +86,7 @@ public class TestCrash {
     void testParseLogFile() throws IOException, InterruptedException {
         LogParser logParser = new LogParser(DotenvLoader.getInstance().getLogPath());
         List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
-        int expected = 4; // 2 for read req and response, 1 for second read req and 1 for crash detected
+        int expected = 6; // 2 for read req and response + N_COHORT - 1 (-1 is coordinator)
         assertEquals(expected, logEntries.size(), "There should be " + expected + " log entries");
 
     }

@@ -66,7 +66,6 @@ public class Cohort extends AbstractActor {
 
     private void onReadRequest(ActorRef sender) throws InterruptedException {
         CommunicationWrapper.send(sender, new Message<Integer>(MessageTypes.READ, this.state), getSelf());
-        this.logger.logReadReq(sender.path().name(), getSelf().path().name());
     }
 
     private void onUpdateRequest(Integer newState, ActorRef sender) throws InterruptedException {
@@ -194,7 +193,8 @@ public class Cohort extends AbstractActor {
 
     final AbstractActor.Receive crashed() {
         return receiveBuilder()
-                .matchAny(msg -> {})
+                .matchAny(msg -> {
+                })
 //                .matchAny(msg -> {
 //                    System.out.println("deferring message"+ msg.toString());
 //                })

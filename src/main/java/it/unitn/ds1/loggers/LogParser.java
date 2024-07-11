@@ -11,26 +11,34 @@ public class LogParser extends Logger {
 
     public static class LogEntry {
         public LogType type;
-        public String cohortID;
+        public String firstActor;
+        public String secondActor;
         public UpdateIdentifier updateIdentifier;
         public int value;
-        public String clientID;
 
-        public LogEntry(LogType type, String cohortID, UpdateIdentifier updateIdentifier, int value, String clientID) {
-            this.cohortID = cohortID;
+        public LogEntry(LogType type, String firstActor, String secondActor, UpdateIdentifier updateIdentifier, int value) {
+            this.firstActor = firstActor;
+            this.secondActor = secondActor;
             this.updateIdentifier = updateIdentifier;
             this.value = value;
-            this.clientID = clientID;
             this.type = type;
         }
+
         @Override
         public String toString() {
+            if (this.type == LogType.CLIENT_DETECTS_COHORT_CRASH || this.type == LogType.COHORT_DETECTS_COHORT_CRASH)
+                return "LogEntry{" +
+                        "type=" + type +
+                        ", detector='" + firstActor + '\'' +
+                        ", crashed='" + secondActor + '\'' +
+                        '}';
+
             return "LogEntry{" +
                     "type=" + type +
-                    ", cohortID='" + cohortID + '\'' +
+                    ", cohortID='" + firstActor + '\'' +
                     ", updateIdentifier=" + updateIdentifier +
                     ", value=" + value +
-                    ", clientID='" + clientID + '\'' +
+                    ", clientID='" + secondActor + '\'' +
                     '}';
         }
     }
@@ -39,6 +47,33 @@ public class LogParser extends Logger {
         super(pathString);
         this.parsedList = this.parseLogFile();
         System.out.println(this.parsedList);
+    }
+
+    private LogType parseType(String[] parts) {
+        LogType type = null;
+        switch (parts[2]) {
+            case "update":
+                type = LogType.UPDATE;
+                break;
+            case "read":
+                if (parts[3].equals("done")) {
+                    type = LogType.READ_DONE;
+                } else if (parts[3].equals("req")) {
+                    type = LogType.READ_REQ;
+                }
+                break;
+            case "detected":
+                if (parts[0].equals("Client")) {
+                    type = LogType.CLIENT_DETECTS_COHORT_CRASH;
+                } else if (parts[0].equals("Cohort")) {
+                    type = LogType.COHORT_DETECTS_COHORT_CRASH;
+                }
+                break;
+            default:
+                throw new RuntimeException("New log type found: " + parts[2]);
+        }
+
+        return type;
     }
 
     public List<LogEntry> parseLogFile() {
@@ -51,34 +86,32 @@ public class LogParser extends Logger {
                     continue;
                 }
                 String[] parts = line.split(" ");
-                LogType type = null;
-                if (parts[2].equals("update")) {
-                    type = LogType.UPDATE;
-                } else if (parts[2].equals("read") && parts[3].equals("req")) {
-                    type = LogType.READ_REQ;
-                } else if (parts[2].equals("read") && parts[3].equals("done")) {
-                    type = LogType.READ_DONE;
-                } else {
-                    throw new Exception("Invalid log entry");
-                }
+                LogType type = parseType(parts);
+
                 String clientID;
+                String replicaID;
                 int value;
                 switch (type) {
                     case UPDATE:
                         String cohortID = parts[1];
                         UpdateIdentifier updateIdentifier = new UpdateIdentifier(Integer.parseInt(parts[3].split(":")[0]), Integer.parseInt(parts[3].split(":")[1]));
                         value = Integer.parseInt(parts[4]);
-                        logEntries.add(new LogEntry(type, cohortID, updateIdentifier, value, null));
+                        logEntries.add(new LogEntry(type, cohortID, null, updateIdentifier, value));
                         break;
                     case READ_REQ:
                         clientID = parts[1];
-                        String replicaID = parts[5];
-                        logEntries.add(new LogEntry(type, replicaID, null, -1, clientID));
+                        replicaID = parts[5];
+                        logEntries.add(new LogEntry(type, clientID, replicaID, null, -1));
                         break;
                     case READ_DONE:
                         clientID = parts[1];
                         value = Integer.parseInt(parts[4]);
-                        logEntries.add(new LogEntry(type, null, null, value, clientID));
+                        logEntries.add(new LogEntry(type, clientID, null, null, value));
+                        break;
+                    case CLIENT_DETECTS_COHORT_CRASH:
+                        clientID = parts[1];
+                        replicaID = parts[3];
+                        logEntries.add(new LogEntry(type, clientID, replicaID, null, -1));
                         break;
                     default:
                         throw new Exception("Invalid log entry");

@@ -1,6 +1,5 @@
 package it.unitn.ds1;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.ArrayList;
 
@@ -8,16 +7,13 @@ import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 
 
-import it.unitn.ds1.loggers.LogParser;
 import it.unitn.ds1.messages.MessageCrash;
-import it.unitn.ds1.messages.MessageTest;
+import it.unitn.ds1.messages.MessageCommand;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
 import it.unitn.ds1.loggers.Logger;
-
-import javax.swing.plaf.ComponentInputMapUIResource;
 
 public class Main {
 
@@ -62,39 +58,39 @@ public class Main {
         }
 
         // make a given cohort crash
-        CommunicationWrapper.send(clients.get(2), new MessageTest(MessageTypes.TEST_READ));
+        CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_READ));
 
-        try{
+        try {
             Thread.sleep(2000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
 
+        // make a given cohort crash
         CommunicationWrapper.send(cohorts.get(2), new MessageCrash());
 
+        CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_READ));
 
-        CommunicationWrapper.send(clients.get(2), new MessageTest(MessageTypes.TEST_READ));
-
-         // tell all cohorts to remove the crashed one
-        for (ActorRef cohort : cohorts) {
-            CommunicationWrapper.send(cohort, new Message<>(MessageTypes.REMOVE_CRASHED, cohorts.get(2)), cohorts.get(1));
-        }
-
-        Message<Object> msg1 = new Message<Object>(MessageTypes.UPDATE_REQUEST, 2000000);
-        CommunicationWrapper.send(cohorts.get(0), msg1, clients.get(0));
-        System.out.println("sent update request");
+        // tell all cohorts to remove the crashed one
+//        for (ActorRef cohort : cohorts) {
+//            CommunicationWrapper.send(cohort, new Message<>(MessageTypes.REMOVE_CRASHED, cohorts.get(2)), cohorts.get(1));
+//        }
+//
+//        Message<Object> msg1 = new Message<Object>(MessageTypes.UPDATE_REQUEST, 2000000);
+//        CommunicationWrapper.send(cohorts.get(0), msg1, clients.get(0));
+//        System.out.println("sent update request");
+//
+//        try {
+//            Thread.sleep(1000);
+//        } catch (InterruptedException e) {
+//            throw new RuntimeException(e);
+//        }
+//
+//        Message<Object> msg2 = new Message<Object>(MessageTypes.READ_REQUEST, null);
+//        CommunicationWrapper.send(cohorts.get(0), msg2, clients.get(0));
 
         try {
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-
-        Message<Object> msg2 = new Message<Object>(MessageTypes.READ_REQUEST, null);
-        CommunicationWrapper.send(cohorts.get(0), msg2, clients.get(0));
-
-        try {
-            Thread.sleep(500);
+            Thread.sleep(2000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } finally {

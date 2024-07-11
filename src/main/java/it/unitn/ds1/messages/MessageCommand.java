@@ -1,9 +1,9 @@
 package it.unitn.ds1.messages;
 
-public class MessageTest {
+public class MessageCommand {
     public final MessageTypes topic;
 
-    public MessageTest(MessageTypes topic){
+    public MessageCommand(MessageTypes topic){
         this.topic = topic;
     }
 }

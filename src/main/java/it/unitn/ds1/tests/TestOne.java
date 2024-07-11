@@ -7,6 +7,7 @@ import it.unitn.ds1.Cohort;
 import it.unitn.ds1.loggers.LogParser;
 import it.unitn.ds1.loggers.Logger;
 import it.unitn.ds1.messages.Message;
+import it.unitn.ds1.messages.MessageCommand;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
@@ -76,8 +77,7 @@ public class TestOne {
             throw new RuntimeException(e);
         }
 
-        Message<Object> msg2 = new Message<Object>(MessageTypes.READ_REQUEST, null);
-        CommunicationWrapper.send(cohorts.get(0), msg2, clients.get(0));
+        CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_READ));
         System.out.println("finished setup test one");
 
         try {

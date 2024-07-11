@@ -3,7 +3,7 @@ package it.unitn.ds1.tools;
 import akka.actor.ActorRef;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.messages.MessageCrash;
-import it.unitn.ds1.messages.MessageTest;
+import it.unitn.ds1.messages.MessageCommand;
 
 public class CommunicationWrapper {
 
@@ -21,7 +21,7 @@ public class CommunicationWrapper {
         receiver.tell(message, ActorRef.noSender());
     }
 
-    public static void send(ActorRef receiver, MessageTest message) throws InterruptedException {
+    public static void send(ActorRef receiver, MessageCommand message) throws InterruptedException {
         receiver.tell(message, ActorRef.noSender());
     }
 }

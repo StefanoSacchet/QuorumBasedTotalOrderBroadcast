@@ -5,55 +5,90 @@ import akka.actor.Cancellable;
 import akka.actor.Props;
 import akka.actor.ActorRef;
 import it.unitn.ds1.messages.Message;
-import it.unitn.ds1.messages.MessageTest;
+import it.unitn.ds1.messages.MessageCommand;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
 import it.unitn.ds1.loggers.ClientLogger;
 import scala.concurrent.duration.Duration;
 
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 public class Client extends AbstractActor {
     public ActorRef rxCohort;
     private final ClientLogger logger;
+    List<Cancellable> pendingTimeouts;
 
     public Client(ActorRef rxCohort) {
         this.rxCohort = rxCohort;
         this.logger = new ClientLogger(DotenvLoader.getInstance().getLogPath());
+        this.pendingTimeouts = new ArrayList<>();
     }
 
     public static Props props(ActorRef rxCohort) {
         return Props.create(Client.class, () -> new Client(rxCohort));
     }
 
-    public ActorRef getRxCohort() {
-        return rxCohort;
+    private Cancellable timeout(ActorRef rxCohort) {
+        return getContext().system().scheduler().scheduleOnce(
+                Duration.create(DotenvLoader.getInstance().getTimeout(), TimeUnit.MILLISECONDS),
+                getSelf(),
+                new Message<>(MessageTypes.TIMEOUT, rxCohort), // the message to send
+                getContext().system().dispatcher(), getSelf()
+        );
+    }
+
+    // When the client receives a read response it logs the response and cancels the timer
+    private void onReadRes(int state) {
+        assert !this.pendingTimeouts.isEmpty();
+
+        Cancellable timeout = this.pendingTimeouts.get(0);
+        timeout.cancel();
+        this.pendingTimeouts.remove(timeout);
+        this.logger.logRead(getSelf().path().name(), (Integer) state);
+        System.out.println(getSelf().path().name() + " Timeout cancelled");
+        System.out.println("Received READ message from " + getSender().path().name() + " with value " + state);
+    }
+
+    private void onCrashDetect(ActorRef crashedCohort) {
+        assert !this.pendingTimeouts.isEmpty();
+        this.pendingTimeouts.remove(0);
+        this.logger.logCrash(getSelf().path().name(), crashedCohort.path().name());
+        System.out.println(getSelf().path().name() + " detected " + crashedCohort.path().name() + " Crashed");
     }
 
     private void onMessage(Message<?> message) {
-        System.out.println("received a message " + message.topic);
         switch (message.topic) {
             case READ:
                 assert message.payload instanceof Integer;
-                this.logger.logRead(getSelf().path().name(), (Integer) message.payload);
-                System.out.println("Received " + message.topic + " message from " + getSender().path().name() + " with value " + message.payload);
+                onReadRes((Integer) message.payload);
                 break;
             case WRITEOK:
                 System.out.println("Received " + message.topic + " message from " + getSender().path().name() + " with value " + message.payload);
                 break;
+            case TIMEOUT:
+                assert message.payload instanceof ActorRef;
+                onCrashDetect((ActorRef) message.payload);
+                break;
             default:
-                System.out.println("Received unknown message from " + getSender().path().name());
+                System.out.println("Received unknown message: " + message.topic + " from " + getSender().path().name());
         }
     }
 
-    private void onTestMessages(MessageTest msg) throws InterruptedException {
-        switch(msg.topic){
+    // When the client sends a read request it starts a timer to wait for the response
+    private void onSendReadRequest() throws InterruptedException {
+        this.pendingTimeouts.add(timeout(this.rxCohort));
+        this.logger.logReadReq(getSelf().path().name(), this.rxCohort.path().name());
+        Message<Object> sendMsg = new Message<>(MessageTypes.READ_REQUEST, null);
+        CommunicationWrapper.send(this.rxCohort, sendMsg, getSelf());
+    }
+
+    private void onMessageCommand(MessageCommand msg) throws InterruptedException {
+        switch (msg.topic) {
             case TEST_READ:
-                Message<Object> sendMsg = new Message<>(MessageTypes.READ_REQUEST, null);
-                CommunicationWrapper.send(rxCohort, sendMsg, getSelf());
-                System.out.println();
+                onSendReadRequest();
                 break;
             case TEST_UPDATE:
                 System.out.println("Test update request");
@@ -61,7 +96,6 @@ public class Client extends AbstractActor {
             default:
                 System.out.println("Received unknown message from " + getSender().path().name());
         }
-
     }
 
     // Here we define the mapping between the received message types and our actor methods
@@ -69,7 +103,7 @@ public class Client extends AbstractActor {
     public Receive createReceive() {
         return receiveBuilder()
                 .match(Message.class, this::onMessage)
-                .match(MessageTest.class, this::onTestMessages)
+                .match(MessageCommand.class, this::onMessageCommand)
                 .build();
     }
 }

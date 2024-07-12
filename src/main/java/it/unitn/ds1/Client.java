@@ -6,6 +6,7 @@ import akka.actor.Props;
 import akka.actor.ActorRef;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.messages.MessageCommand;
+import it.unitn.ds1.messages.MessageTimeout;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
@@ -85,6 +86,12 @@ public class Client extends AbstractActor {
         CommunicationWrapper.send(this.rxCohort, sendMsg, getSelf());
     }
 
+    private void onSendUpdateRequest() throws InterruptedException{
+        this.logger.logUpdateReq(getSelf().path().name(), this.rxCohort.path().name(), 2000000);
+        Message<Object> sendMsg = new Message<>(MessageTypes.UPDATE_REQUEST, 2000000);
+        CommunicationWrapper.send(this.rxCohort, sendMsg, getSelf());
+    }
+
     private void onMessageCommand(MessageCommand msg) throws InterruptedException {
         switch (msg.topic) {
             case TEST_READ:
@@ -92,11 +99,14 @@ public class Client extends AbstractActor {
                 break;
             case TEST_UPDATE:
                 System.out.println("Test update request");
+                onSendUpdateRequest();
                 break;
             default:
                 System.out.println("Received unknown message from " + getSender().path().name());
         }
     }
+
+
 
     // Here we define the mapping between the received message types and our actor methods
     @Override

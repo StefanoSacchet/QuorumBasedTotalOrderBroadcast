@@ -35,4 +35,13 @@ public class ClientLogger extends Logger {
             System.err.println("Error writing to log file: " + e.getMessage());
         }
     }
+
+    public void logUpdateReq(String clientID, String replicaID, int value) {
+        String logEntry = String.format("Client %s update req to %s with value %d%n", clientID, replicaID, value);
+        try {
+            Files.write(this.path, logEntry.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            System.err.println("Error writing to log file: " + e.getMessage());
+        }
+    }
 }

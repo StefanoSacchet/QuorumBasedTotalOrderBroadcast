@@ -43,9 +43,12 @@ public class Cohort extends AbstractActor {
     private Cancellable cohortHeartbeatTimeout;
 
     // timer for 2phase broadcast, used to detect if someone crashed in the inner network
-    private final HashMap<MessageTypes, Cancellable> timersBroadcast;
+    private final HashMap<MessageTypes, List<Cancellable>> timersBroadcast;
     // mapping from a message to the expected one, used if a timeout occurs
     private final HashMap<MessageTypes, MessageTypes> sentExpectedMap;
+
+    //The coordinator needs to keep track of timersBroadcast for each cohort
+    private final HashMap<ActorRef, HashMap<MessageTypes, List<Cancellable>>> timersBroadcastCohorts;
 
     public static Props props(boolean isCoordinator) {
         return Props.create(Cohort.class, () -> new Cohort(isCoordinator));
@@ -62,7 +65,16 @@ public class Cohort extends AbstractActor {
         this.logger = new CohortLogger(DotenvLoader.getInstance().getLogPath());
         this.coordinatorHeartbeatTimeouts = new ArrayList<>();
         this.cohortHeartbeatTimeout = null;
-        this.timersBroadcast = new HashMap<MessageTypes, Cancellable>();
+        this.timersBroadcast = setTimersBroadcast();
+        //each cohort has a map of all timers that he has pending
+        if (!isCoordinator) {
+            this.timersBroadcastCohorts = null;
+        } else {
+            this.timersBroadcastCohorts = new HashMap<ActorRef, HashMap<MessageTypes, List<Cancellable>>>();
+        }
+
+
+        //map to quickly understand sequence of messages in the 2phase broadcast
         this.sentExpectedMap = new HashMap<MessageTypes, MessageTypes>();
         this.sentExpectedMap.put(MessageTypes.UPDATE_REQUEST, MessageTypes.UPDATE);
         this.sentExpectedMap.put(MessageTypes.UPDATE, MessageTypes.ACK);
@@ -70,11 +82,21 @@ public class Cohort extends AbstractActor {
         this.sentExpectedMap.put(MessageTypes.HEARTBEAT, null);
     }
 
+    private HashMap<MessageTypes, List<Cancellable>> setTimersBroadcast() {
+        HashMap<MessageTypes, List<Cancellable>> timersBroadcast = new HashMap<MessageTypes, List<Cancellable>>();
+        timersBroadcast.put(MessageTypes.UPDATE_REQUEST, new ArrayList<>());
+        timersBroadcast.put(MessageTypes.UPDATE, new ArrayList<>());
+        timersBroadcast.put(MessageTypes.ACK, new ArrayList<>());
+        timersBroadcast.put(MessageTypes.WRITEOK, new ArrayList<>());
+        return timersBroadcast;
+    }
+
     // coordinator sends heartbeat to all cohorts
     private void startHeartbeat() throws InterruptedException {
         for (ActorRef cohort : this.cohorts) {
-            if (cohort.path().name().equals(getSelf().path().name()))
+            if (cohort.path().name().equals(getSelf().path().name())){
                 continue;
+            }
             Cancellable timer = getContext().system().scheduler().scheduleWithFixedDelay(
                     Duration.create(1, TimeUnit.SECONDS), // when to start generating messages
                     Duration.create(DotenvLoader.getInstance().getHeartbeat(), TimeUnit.MILLISECONDS), // how frequently generate them
@@ -93,6 +115,9 @@ public class Cohort extends AbstractActor {
         this.cohorts = cohorts;
 
         if (this.isCoordinator) {
+            for (ActorRef cohort : this.cohorts) {
+                this.timersBroadcastCohorts.put(cohort, setTimersBroadcast());
+            }
             startHeartbeat();
         }
     }
@@ -111,32 +136,47 @@ public class Cohort extends AbstractActor {
             startQuorum(newState);
         } else {
             CommunicationWrapper.send(this.coordinator, new Message<Integer>(MessageTypes.UPDATE_REQUEST, newState), getSelf());
-            Cancellable timeout = this.setTimeout(MessageTypes.UPDATE_REQUEST, DotenvLoader.getInstance().getTimeout());
-            this.timersBroadcast.put(this.sentExpectedMap.get(MessageTypes.UPDATE_REQUEST), timeout);
+            // same as heartbeat, only coordinator can send UPDATE response
+            Cancellable timeout = this.setTimeout(MessageTypes.UPDATE_REQUEST, DotenvLoader.getInstance().getTimeout(), ActorRef.noSender());
+            MessageTypes key = this.sentExpectedMap.get(MessageTypes.UPDATE_REQUEST);
+            List<Cancellable> timersList = this.timersBroadcast.get(key);
+            timersList.add(timeout);
         }
     }
 
     // Coordinator sends vote requests to all cohorts (included himself)
     private void startQuorum(int newState) throws InterruptedException {
         for (ActorRef cohort : this.cohorts) {
+            HashMap<MessageTypes, List<Cancellable>> timersCohort = this.timersBroadcastCohorts.get(cohort);
+            //we are adding cohort because we want to be able who crashed if we did not receive the ack message
+            Cancellable timeout = setTimeout(MessageTypes.UPDATE, DotenvLoader.getInstance().getTimeout(), cohort);
+            MessageTypes key = this.sentExpectedMap.get(MessageTypes.UPDATE);
+            List<Cancellable> timersList = timersCohort.get(key);
+            timersList.add(timeout);
             CommunicationWrapper.send(cohort, new Message<Integer>(MessageTypes.UPDATE, newState), getSelf());
         }
-        // todo set up timers for update -> ACKs
     }
 
     // Cohorts receive vote request from coordinator
     private void onUpdate(int newState, MessageTypes topic) throws InterruptedException {
-        if (this.timersBroadcast.get(topic) != null) {
+        List<Cancellable> timersList = this.timersBroadcast.get(topic);
+        if (!timersList.isEmpty()) {
             System.out.println("Received update from coordinator, Canceling timer");
-            this.timersBroadcast.get(topic).cancel();
-            this.timersBroadcast.remove(topic);
+            Cancellable timer = timersList.remove(0);
+            timer.cancel();
         }
-        ActorRef sender = getSender();
-        CommunicationWrapper.send(sender, new Message<Integer>(MessageTypes.ACK, null), getSelf());
+        CommunicationWrapper.send(this.coordinator, new Message<Integer>(MessageTypes.ACK, null), getSelf());
     }
 
     // Coordinator receives votes from cohorts and decide when majority is reached
-    private void onACK() throws InterruptedException {
+    private void onACK(ActorRef sender, MessageTypes topic) throws InterruptedException {
+        HashMap<MessageTypes, List<Cancellable>> timersCohort = this.timersBroadcastCohorts.get(sender);
+        List<Cancellable> timersList = timersCohort.get(MessageTypes.ACK);
+        if (!timersList.isEmpty()) {
+            System.out.println("Received ACK from " + sender.path().name() + ", Canceling timer");
+            Cancellable timer = timersList.remove(0);
+            timer.cancel();
+        }
         this.voters++;
         if (this.voters >= this.cohorts.size() / 2 + 1) {
             for (ActorRef cohort : this.cohorts) {
@@ -171,13 +211,15 @@ public class Cohort extends AbstractActor {
     // how to declare generic type in fn signature
     // payload is a generic type
 
-    private Cancellable setTimeout(MessageTypes type, int timeout) {
+    // We want to send a message, whose sender is the one we are sending message to
+    // this is done because we want to be able to understand who crashed if we did not receive the message!
+    private Cancellable setTimeout(MessageTypes type, int timeout, ActorRef sender) {
         return getContext().system().scheduler().scheduleOnce(
                 Duration.create(timeout, TimeUnit.MILLISECONDS), // when to start generating messages
                 getSelf(), // destination actor reference
                 new MessageTimeout<>(type, this.sentExpectedMap.get(type)), // the message to send
                 getContext().system().dispatcher(), // system dispatcher
-                getSelf() // source of the message (myself)
+                sender // source of the message (myself)
         );
     }
 
@@ -186,7 +228,8 @@ public class Cohort extends AbstractActor {
         if (this.cohortHeartbeatTimeout != null) {
             this.cohortHeartbeatTimeout.cancel();
         }
-        this.cohortHeartbeatTimeout = setTimeout(MessageTypes.HEARTBEAT, DotenvLoader.getInstance().getHeartbeatTimeout());
+        // we use noSender because only coordinator can send heartbeat
+        this.cohortHeartbeatTimeout = setTimeout(MessageTypes.HEARTBEAT, DotenvLoader.getInstance().getHeartbeatTimeout(), ActorRef.noSender());
     }
 
 
@@ -223,7 +266,7 @@ public class Cohort extends AbstractActor {
             case ACK:
                 assert message.payload == null;
                 if (this.isCoordinator) {
-                    onACK();
+                    onACK(sender, message.topic);
                 } else {
                     throw new InterruptedException("Not a coordinator");
                 }
@@ -285,6 +328,12 @@ public class Cohort extends AbstractActor {
         this.startLeaderElection();
     }
 
+    private void onUpdateTimeout(MessageTypes topic, ActorRef crashedCohort) {
+        MessageTypes cause = this.sentExpectedMap.get(topic);
+        System.out.println("Cohort " + getSelf().path().name() + " detected " + crashedCohort.path().name() + " crashed due to no response to " + topic);
+        this.logger.logCrash(getSelf().path().name(), crashedCohort.path().name(), cause);
+    }
+
     private void onTimeout(MessageTimeout message) {
         switch (message.topic) {
             case HEARTBEAT:
@@ -292,9 +341,12 @@ public class Cohort extends AbstractActor {
                 onHearthbeatTimeout(message.topic);
                 break;
             case UPDATE_REQUEST:
-                assert this.sentExpectedMap.get(message.topic) != null;
                 assert message.payload == MessageTypes.UPDATE;
                 onUpdateRequestTimeout(message.topic);
+                break;
+            case UPDATE:
+                assert message.payload == MessageTypes.ACK;
+                onUpdateTimeout(message.topic, getSender());
                 break;
             default:
                 System.out.println("Received unknown timeout: " + message.topic);

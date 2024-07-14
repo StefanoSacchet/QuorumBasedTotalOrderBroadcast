@@ -121,8 +121,7 @@ public class LogParser extends Logger {
                     case CLIENT_DETECTS_COHORT_CRASH:
                         clientID = parts[1];
                         replicaID = parts[3];
-                        causeOfCrash = parts[8];
-                        logEntries.add(new LogEntry(type, clientID, replicaID, null, -1,causeOfCrash));
+                        logEntries.add(new LogEntry(type, clientID, replicaID, null, -1,null));
                         break;
                     case COHORT_DETECTS_COHORT_CRASH:
                         String detector = parts[1];

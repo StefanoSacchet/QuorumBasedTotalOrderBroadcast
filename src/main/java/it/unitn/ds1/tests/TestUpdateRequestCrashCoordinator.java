@@ -107,7 +107,6 @@ public class TestUpdateRequestCrashCoordinator {
                 readDoneFound = true;
             }
         }
-        assertSame(MessageTypes.valueOf("CRASH"), MessageTypes.CRASH);
         assertTrue(readRequestFound, "Read request should be found");
         assertTrue(readDoneFound, "Read done should be found");
         int detectedCrashes = 0;

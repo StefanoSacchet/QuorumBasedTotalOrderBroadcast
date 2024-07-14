@@ -5,6 +5,7 @@ import akka.actor.ActorSystem;
 import it.unitn.ds1.Client;
 import it.unitn.ds1.Cohort;
 import it.unitn.ds1.loggers.LogParser;
+import it.unitn.ds1.loggers.LogType;
 import it.unitn.ds1.loggers.Logger;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.messages.MessageCommand;
@@ -19,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestCoordinatorCrash {
     @BeforeAll
@@ -88,6 +90,26 @@ public class TestCoordinatorCrash {
         List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
         int expected = 6; // 2 for read req and response + N_COHORT - 1 (-1 is coordinator)
         assertEquals(expected, logEntries.size(), "There should be " + expected + " log entries");
+
+        //check for read req and read done
+        boolean readRequestFound = false;
+        boolean readDoneFound = false;
+        for (LogParser.LogEntry entry : logEntries) {
+            if (entry.type == LogType.READ_REQ && entry.firstActor.equals("client_2") && entry.secondActor.equals("cohort_2")) {
+                readRequestFound = true;
+            } else if (entry.type == LogType.READ_DONE && entry.firstActor.equals("client_2") && entry.value == 0) {
+                readDoneFound = true;
+            }
+        }
+        assertTrue(readRequestFound, "Read request should be found");
+        assertTrue(readDoneFound, "Read done should be found");
+        int detectedCrashes = 0;
+        for (LogParser.LogEntry entry : logEntries) {
+            if (entry.type == LogType.COHORT_DETECTS_COHORT_CRASH && MessageTypes.valueOf(entry.causeOfCrash) == MessageTypes.HEARTBEAT) {
+                detectedCrashes++;
+            }
+        }
+        assertEquals(4, detectedCrashes, "There should be 4 detected crashes, because 4 replicas are alive");
 
     }
 }

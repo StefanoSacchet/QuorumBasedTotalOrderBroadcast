@@ -31,7 +31,6 @@ public class Cohort extends AbstractActor {
     private int state;
     private int voters;
     private int unstableState;
-    private ActorRef pendingClient;
 
     private final UpdateIdentifier updateIdentifier;
     private HashMap<UpdateIdentifier, Integer> history;
@@ -46,7 +45,7 @@ public class Cohort extends AbstractActor {
     // timer for 2phase broadcast, used to detect if someone crashed in the inner network
     private final HashMap<MessageTypes, Cancellable> timersBroadcast;
     // mapping from a message to the expected one, used if a timeout occurs
-    private final HashMap<MessageTypes,MessageTypes> sentExpectedMap;
+    private final HashMap<MessageTypes, MessageTypes> sentExpectedMap;
 
     public static Props props(boolean isCoordinator) {
         return Props.create(Cohort.class, () -> new Cohort(isCoordinator));
@@ -58,7 +57,6 @@ public class Cohort extends AbstractActor {
         this.state = 0;
         this.voters = 0;
         this.unstableState = 0;
-        this.pendingClient = null;
         this.updateIdentifier = new UpdateIdentifier(0, 0);
         this.history = new HashMap<UpdateIdentifier, Integer>();
         this.logger = new CohortLogger(DotenvLoader.getInstance().getLogPath());
@@ -110,7 +108,6 @@ public class Cohort extends AbstractActor {
     private void onUpdateRequest(Integer newState, ActorRef sender) throws InterruptedException {
         if (this.isCoordinator) {
             this.unstableState = newState;
-            this.pendingClient = sender;
             startQuorum(newState);
         } else {
             CommunicationWrapper.send(this.coordinator, new Message<Integer>(MessageTypes.UPDATE_REQUEST, newState), getSelf());
@@ -129,7 +126,7 @@ public class Cohort extends AbstractActor {
 
     // Cohorts receive vote request from coordinator
     private void onUpdate(int newState, MessageTypes topic) throws InterruptedException {
-        if (this.timersBroadcast.get(topic) != null){
+        if (this.timersBroadcast.get(topic) != null) {
             System.out.println("Received update from coordinator, Canceling timer");
             this.timersBroadcast.get(topic).cancel();
             this.timersBroadcast.remove(topic);
@@ -157,10 +154,6 @@ public class Cohort extends AbstractActor {
         this.updateIdentifier.setSequence(this.updateIdentifier.getSequence() + 1);
         this.history.put(this.updateIdentifier, this.state);
         this.logger.logUpdate(getSelf().path().name(), this.updateIdentifier.getEpoch(), this.updateIdentifier.getSequence(), this.state);
-        if (this.pendingClient != null) {
-            CommunicationWrapper.send(this.pendingClient, new Message<Integer>(MessageTypes.WRITEOK, this.state), getSelf());
-            this.pendingClient = null;
-        }
     }
 
     private void onRemoveCrashed(ActorRef crashed) {
@@ -189,13 +182,12 @@ public class Cohort extends AbstractActor {
     }
 
     private void onHeartbeat(ActorRef sender) {
-        System.out.println(getSelf().path().name() + " received heartbeat from " + sender.path().name());
+        // System.out.println(getSelf().path().name() + " received heartbeat from " + sender.path().name());
         if (this.cohortHeartbeatTimeout != null) {
             this.cohortHeartbeatTimeout.cancel();
         }
         this.cohortHeartbeatTimeout = setTimeout(MessageTypes.HEARTBEAT, DotenvLoader.getInstance().getHeartbeatTimeout());
     }
-
 
 
     private void onMessage(Message<?> message) throws InterruptedException {
@@ -282,7 +274,7 @@ public class Cohort extends AbstractActor {
         // remove all timers
     }
 
-    private void startLeaderElection(){
+    private void startLeaderElection() {
         //TODO implement leader election
     }
 
@@ -299,15 +291,15 @@ public class Cohort extends AbstractActor {
                 assert message.payload == null;
                 onHearthbeatTimeout(message.topic);
                 break;
-                case UPDATE_REQUEST:
-                    assert this.sentExpectedMap.get(message.topic) != null;
-                    assert message.payload == MessageTypes.UPDATE;
-                    onUpdateRequestTimeout(message.topic);
-                    break;
+            case UPDATE_REQUEST:
+                assert this.sentExpectedMap.get(message.topic) != null;
+                assert message.payload == MessageTypes.UPDATE;
+                onUpdateRequestTimeout(message.topic);
+                break;
             default:
                 System.out.println("Received unknown timeout: " + message.topic);
-            }
-            //TODO start leader election and clear all timeouts
+        }
+        //TODO start leader election and clear all timeouts
     }
 
     // Here we define the mapping between the received message types and our actor methods

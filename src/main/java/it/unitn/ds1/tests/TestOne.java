@@ -4,7 +4,9 @@ import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import it.unitn.ds1.Client;
 import it.unitn.ds1.Cohort;
+import it.unitn.ds1.UpdateIdentifier;
 import it.unitn.ds1.loggers.LogParser;
+import it.unitn.ds1.loggers.LogType;
 import it.unitn.ds1.loggers.Logger;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.messages.MessageCommand;
@@ -35,7 +37,7 @@ public class TestOne {
 
         // Create an array to hold references to the cohorts
 
-        List<ActorRef> cohorts = new ArrayList<ActorRef>(N_COHORTS + 1);
+        List<ActorRef> cohorts = new ArrayList<ActorRef>(N_COHORTS);
 
         // Create the Coordinator cohort
         ActorRef coordinator = system.actorOf(
@@ -45,7 +47,7 @@ public class TestOne {
         cohorts.add(coordinator);
 
         // Create multiple Cohort actors
-        for (int i = 1; i <= N_COHORTS; i++) {
+        for (int i = 1; i < N_COHORTS; i++) {
             ActorRef cohort = system.actorOf(
                     Cohort.props(false), // specifying this cohort as not the coordinator
                     "cohort_" + i
@@ -59,8 +61,8 @@ public class TestOne {
             CommunicationWrapper.send(cohort, new Message<ActorRef>(MessageTypes.SET_COORDINATOR, cohorts.get(0)), ActorRef.noSender());
         }
 
-        List<ActorRef> clients = new ArrayList<ActorRef>(N_COHORTS + 1);
-        for (int i = 0; i <= N_COHORTS; i++) {
+        List<ActorRef> clients = new ArrayList<ActorRef>(N_COHORTS);
+        for (int i = 0; i < N_COHORTS; i++) {
             ActorRef client = system.actorOf(
                     Client.props(cohorts.get(i)),
                     "client_" + i
@@ -68,11 +70,18 @@ public class TestOne {
             clients.add(client);
         }
 
-        Message<Object> msg1 = new Message<Object>(MessageTypes.UPDATE_REQUEST, 2000000);
-        CommunicationWrapper.send(cohorts.get(0), msg1, clients.get(0));
+        CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_READ));
 
         try {
-            Thread.sleep(1000);
+            Thread.sleep(2000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
+        CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_UPDATE));
+
+        try {
+            Thread.sleep(2000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
@@ -92,10 +101,61 @@ public class TestOne {
         LogParser logParser = new LogParser(DotenvLoader.getInstance().getLogPath());
         List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
         int N_COHORTS = DotenvLoader.getInstance().getNCohorts();
-        int expected = N_COHORTS + 1 + 2; // 1 read request and 1 update request
+        int expected = N_COHORTS + 5; // 2 read req and read done,1 update req, N_COHORTS  update done
 
         assertEquals(expected, logEntries.size(), "There should be" + expected + " log entries");
 
+        assertEquals(expected, logEntries.size(), "There should be " + expected + " log entries");
+
+        //check read req and read done
+        boolean readRequestFound = false;
+        boolean readDoneFound = false;
+        for (LogParser.LogEntry entry : logEntries) {
+            if (entry.type == LogType.READ_REQ && entry.firstActor.equals("client_2") && entry.secondActor.equals("cohort_2")) {
+                readRequestFound = true;
+            } else if (entry.type == LogType.READ_DONE && entry.firstActor.equals("client_2") && entry.value == 0) {
+                readDoneFound = true;
+            }
+        }
+        assertTrue(readRequestFound, "Read request should be found");
+        assertTrue(readDoneFound, "Read done should be found");
+
+        //check update request and crash detected
+        boolean updateRequestFound = false;
+        int updateValue = -1;
+        for (LogParser.LogEntry entry : logEntries) {
+            if (entry.type == LogType.UPDATE_REQ && entry.firstActor.equals("client_2") && entry.secondActor.equals("cohort_2")) {
+                updateRequestFound = true;
+                updateValue = entry.value;
+                break;
+            }
+        }
+        assertEquals(updateValue, 2000000, "Update value should be 2000000");
+        assertTrue(updateRequestFound, "Update request should be found");
+
+        //now we check for the updates
+        UpdateIdentifier check = new UpdateIdentifier(0, 1);
+        int updatesDone = 0;
+        //check for N_COHORTS update messages
+        for (LogParser.LogEntry entry : logEntries) {
+            if (entry.type == LogType.UPDATE && entry.updateIdentifier.equals(check) && updateValue == entry.value) {
+                updatesDone++;
+            }
+        }
+        assertEquals(updatesDone, N_COHORTS, "There should be " + N_COHORTS + " update messages");
+
+        //now for the new read request with the crash found
+        boolean readRequestFound2 = false;
+        boolean readDoneFound2 = false;
+        for (LogParser.LogEntry entry : logEntries) {
+            if (entry.type == LogType.READ_REQ && entry.firstActor.equals("client_2") && entry.secondActor.equals("cohort_2")) {
+                readRequestFound2 = true;
+            } else if (entry.type == LogType.READ_DONE && entry.firstActor.equals("client_2") && entry.value == 2000000) {
+                readDoneFound2 = true;
+            }
+        }
+        assertTrue(readRequestFound2, "Read request should be found");
+        assertTrue(readDoneFound2, "Read should be done");
     }
 }
 

@@ -29,6 +29,18 @@ public class UpdateIdentifier implements Serializable {
         this.updateIdentifier.setSecond(sequence);
     }
 
+    // override equals method
+    @Override
+    public boolean equals(Object obj) {
+        if (obj == this) {
+            return true;
+        }
+        if (!(obj instanceof UpdateIdentifier updateIdentifier)) {
+            return false;
+        }
+        return this.getEpoch() == updateIdentifier.getEpoch() && this.getSequence() == updateIdentifier.getSequence();
+    }
+
     @Override
     public String toString() {
         return "(" + this.getEpoch() + ", " + this.getSequence() + ")";

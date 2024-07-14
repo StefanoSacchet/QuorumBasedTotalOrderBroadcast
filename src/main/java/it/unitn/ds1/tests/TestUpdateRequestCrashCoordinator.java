@@ -5,6 +5,7 @@ import akka.actor.ActorSystem;
 import it.unitn.ds1.Client;
 import it.unitn.ds1.Cohort;
 import it.unitn.ds1.loggers.LogParser;
+import it.unitn.ds1.loggers.LogType;
 import it.unitn.ds1.loggers.Logger;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.messages.MessageCommand;
@@ -18,7 +19,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class TestUpdateRequestCrashCoordinator {
     @BeforeAll
@@ -61,7 +62,7 @@ public class TestUpdateRequestCrashCoordinator {
             clients.add(client);
         }
 
-        // make a given cohort crash
+
         CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_READ));
 
         try {
@@ -69,6 +70,8 @@ public class TestUpdateRequestCrashCoordinator {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
+
+        // make a given cohort crash
         CommunicationWrapper.send(cohorts.get(0), new MessageCommand(MessageTypes.CRASH));
         try {
             Thread.sleep(2000);
@@ -91,8 +94,41 @@ public class TestUpdateRequestCrashCoordinator {
     void testParseLogFile() throws IOException, InterruptedException {
         LogParser logParser = new LogParser(DotenvLoader.getInstance().getLogPath());
         List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
-        int expected = 6; // 2 for read req and response + N_COHORT - 1 (-1 is coordinator)
+        int expected = 8; // 2 for read req and response + N_COHORT - 1 (-1 is coordinator)
         assertEquals(expected, logEntries.size(), "There should be " + expected + " log entries");
 
+        //check for read req and read done
+        boolean readRequestFound = false;
+        boolean readDoneFound = false;
+        for (LogParser.LogEntry entry : logEntries) {
+            if (entry.type == LogType.READ_REQ && entry.firstActor.equals("client_2") && entry.secondActor.equals("cohort_2")) {
+                readRequestFound = true;
+            } else if (entry.type == LogType.READ_DONE && entry.firstActor.equals("client_2") && entry.value == 0) {
+                readDoneFound = true;
+            }
+        }
+        assertSame(MessageTypes.valueOf("CRASH"), MessageTypes.CRASH);
+        assertTrue(readRequestFound, "Read request should be found");
+        assertTrue(readDoneFound, "Read done should be found");
+        int detectedCrashes = 0;
+        for (LogParser.LogEntry entry : logEntries) {
+            if (entry.type == LogType.COHORT_DETECTS_COHORT_CRASH && MessageTypes.valueOf(entry.causeOfCrash) == MessageTypes.HEARTBEAT) {
+                detectedCrashes++;
+            }
+        }
+        assertEquals(4, detectedCrashes, "There should be 4 detected crashes, because 4 replicas are alive");
+
+        //check for update and crash
+        boolean updateRequestFound = false;
+        boolean crashDetected = false;
+        for (LogParser.LogEntry entry : logEntries) {
+            if (entry.type == LogType.UPDATE_REQ && entry.firstActor.equals("client_2") && entry.secondActor.equals("cohort_2") && entry.value == 2000000) {
+                updateRequestFound = true;
+            } else if (entry.type == LogType.COHORT_DETECTS_COHORT_CRASH && entry.secondActor.equals("cohort_0") && MessageTypes.valueOf(entry.causeOfCrash) == MessageTypes.UPDATE) {
+                crashDetected = true;
+            }
+        }
+        assertTrue(updateRequestFound, "Update request should be found");
+        assertTrue(crashDetected, "Coordinator crash due to no response to update request should be found");
     }
 }

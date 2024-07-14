@@ -4,6 +4,7 @@ public enum LogType {
     UPDATE,
     READ_REQ,
     READ_DONE,
+    UPDATE_REQ,
 
     // crashes
     CLIENT_DETECTS_COHORT_CRASH,

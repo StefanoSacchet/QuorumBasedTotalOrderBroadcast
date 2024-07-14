@@ -276,26 +276,33 @@ public class Cohort extends AbstractActor {
         }
     }
 
-    private void onHearthbeatTimeout() {
-        System.out.println(getSelf().path().name() + " detected " + this.coordinator.path().name() + " crashed");
-        this.logger.logCrash(getSelf().path().name(), this.coordinator.path().name());
+    private void onHearthbeatTimeout(MessageTypes topic) {
+        System.out.println(getSelf().path().name() + " detected " + this.coordinator.path().name() + " crashed, no " + topic);
+        this.logger.logCrash(getSelf().path().name(), this.coordinator.path().name(), topic);
         // remove all timers
     }
 
-    private void onUpdateRequestTimeout() {
-        System.out.println(getSelf().path().name() + " detected coordinator crashed");
+    private void startLeaderElection(){
+        //TODO implement leader election
+    }
+
+    private void onUpdateRequestTimeout(MessageTypes topic) {
+        MessageTypes cause = this.sentExpectedMap.get(topic);
+        System.out.println(getSelf().path().name() + " detected coordinator crashed due to no " + cause);
+        this.logger.logCrash(getSelf().path().name(), this.coordinator.path().name(), cause);
+        this.startLeaderElection();
     }
 
     private void onTimeout(MessageTimeout message) {
         switch (message.topic) {
             case HEARTBEAT:
                 assert message.payload == null;
-                onHearthbeatTimeout();
+                onHearthbeatTimeout(message.topic);
                 break;
                 case UPDATE_REQUEST:
                     assert this.sentExpectedMap.get(message.topic) != null;
                     assert message.payload == MessageTypes.UPDATE;
-                    onUpdateRequestTimeout();
+                    onUpdateRequestTimeout(message.topic);
                     break;
             default:
                 System.out.println("Received unknown timeout: " + message.topic);

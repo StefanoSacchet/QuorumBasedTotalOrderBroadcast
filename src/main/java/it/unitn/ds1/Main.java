@@ -59,7 +59,7 @@ public class Main {
 
 
         CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_UPDATE));
-        CommunicationWrapper.send(coordinator, new MessageCommand(MessageTypes.CRASHNOWRITEOK));
+        CommunicationWrapper.send(cohorts.get(0), new MessageCommand(MessageTypes.CRASH));
 
         // tell all cohorts to remove the crashed one
 //        for (ActorRef cohort : cohorts) {

@@ -50,6 +50,8 @@ public class Cohort extends AbstractActor {
     //The coordinator needs to keep track of timersBroadcast for each cohort
     private final HashMap<ActorRef, HashMap<MessageTypes, List<Cancellable>>> timersBroadcastCohorts;
 
+    private boolean noWriteOkResponse;
+
     public static Props props(boolean isCoordinator) {
         return Props.create(Cohort.class, () -> new Cohort(isCoordinator));
     }
@@ -80,6 +82,9 @@ public class Cohort extends AbstractActor {
         this.sentExpectedMap.put(MessageTypes.UPDATE, MessageTypes.ACK);
         this.sentExpectedMap.put(MessageTypes.ACK, MessageTypes.WRITEOK);
         this.sentExpectedMap.put(MessageTypes.HEARTBEAT, null);
+
+        // variable used to test the case where the coordinator crashes before sending writeok
+        this.noWriteOkResponse = false;
     }
 
     private HashMap<MessageTypes, List<Cancellable>> setTimersBroadcast() {
@@ -94,7 +99,7 @@ public class Cohort extends AbstractActor {
     // coordinator sends heartbeat to all cohorts
     private void startHeartbeat() throws InterruptedException {
         for (ActorRef cohort : this.cohorts) {
-            if (cohort.path().name().equals(getSelf().path().name())){
+            if (cohort.path().name().equals(getSelf().path().name())) {
                 continue;
             }
             Cancellable timer = getContext().system().scheduler().scheduleWithFixedDelay(
@@ -159,12 +164,18 @@ public class Cohort extends AbstractActor {
 
     // Cohorts receive vote request from coordinator
     private void onUpdate(int newState, MessageTypes topic) throws InterruptedException {
+        // remove the timer for the update
         List<Cancellable> timersList = this.timersBroadcast.get(topic);
         if (!timersList.isEmpty()) {
             System.out.println("Received update from coordinator, Canceling timer");
             Cancellable timer = timersList.remove(0);
             timer.cancel();
         }
+        // start the timer for the ack
+        Cancellable timeout = setTimeout(MessageTypes.ACK, DotenvLoader.getInstance().getTimeout(), this.coordinator);
+        MessageTypes key = this.sentExpectedMap.get(MessageTypes.ACK);
+        List<Cancellable> newList = this.timersBroadcast.get(key);
+        newList.add(timeout);
         CommunicationWrapper.send(this.coordinator, new Message<Integer>(MessageTypes.ACK, null), getSelf());
     }
 
@@ -172,10 +183,15 @@ public class Cohort extends AbstractActor {
     private void onACK(ActorRef sender, MessageTypes topic) throws InterruptedException {
         HashMap<MessageTypes, List<Cancellable>> timersCohort = this.timersBroadcastCohorts.get(sender);
         List<Cancellable> timersList = timersCohort.get(MessageTypes.ACK);
-        if (!timersList.isEmpty()) {
-            System.out.println("Received ACK from " + sender.path().name() + ", Canceling timer");
-            Cancellable timer = timersList.remove(0);
-            timer.cancel();
+        assert !timersList.isEmpty();
+        System.out.println("Received ACK from " + sender.path().name() + ", Canceling timer");
+        Cancellable timer = timersList.remove(0);
+        timer.cancel();
+        // we have to make the coordinator crash to test this functionality
+        if (this.noWriteOkResponse) {
+            this.isCrashed = true;
+            getContext().become(crashed());
+            return;
         }
         this.voters++;
         if (this.voters >= this.cohorts.size() / 2 + 1) {
@@ -189,6 +205,13 @@ public class Cohort extends AbstractActor {
     // Cohorts receive update confirm from coordinator (included himself)
     // change their state, reset temporary values and increment sequence number
     private void onWriteOk(Integer newState) throws InterruptedException {
+        // remove pending timer for this message
+        List<Cancellable> timersList = this.timersBroadcast.get(MessageTypes.WRITEOK);
+        assert !timersList.isEmpty();
+        System.out.println("Received writeok from coordinator, Canceling timer");
+        Cancellable timer = timersList.remove(0);
+        timer.cancel();
+
         this.state = newState;
         this.unstableState = 0;
         this.updateIdentifier.setSequence(this.updateIdentifier.getSequence() + 1);
@@ -307,6 +330,9 @@ public class Cohort extends AbstractActor {
     private void onCommandMsg(MessageCommand message) {
         switch (message.topic) {
             case CRASH -> onCommandCrash();
+            case CRASHNOWRITEOK -> {
+                this.noWriteOkResponse = true;
+            }
             default -> System.out.println("Received unknown command: " + message.topic);
         }
     }
@@ -321,17 +347,22 @@ public class Cohort extends AbstractActor {
         //TODO implement leader election
     }
 
-    private void onUpdateRequestTimeout(MessageTypes topic) {
-        MessageTypes cause = this.sentExpectedMap.get(topic);
+    private void onUpdateRequestTimeout(MessageTypes cause) {
         System.out.println(getSelf().path().name() + " detected coordinator crashed due to no " + cause);
         this.logger.logCrash(getSelf().path().name(), this.coordinator.path().name(), cause);
         this.startLeaderElection();
     }
 
-    private void onUpdateTimeout(MessageTypes topic, ActorRef crashedCohort) {
-        MessageTypes cause = this.sentExpectedMap.get(topic);
-        System.out.println("Cohort " + getSelf().path().name() + " detected " + crashedCohort.path().name() + " crashed due to no response to " + topic);
+    private void onUpdateTimeout(MessageTypes cause, ActorRef crashedCohort) {
+        System.out.println("Cohort " + getSelf().path().name() + " detected " + crashedCohort.path().name() + " crashed due to no " + cause);
         this.logger.logCrash(getSelf().path().name(), crashedCohort.path().name(), cause);
+        // TODO send to all cohorts to remove crashed
+    }
+
+    private void onACKTimeout(MessageTypes cause) {
+        System.out.println("Cohort " + getSelf().path().name() + " detected " + this.coordinator.path().name() + " crashed due to no " + cause);
+        this.logger.logCrash(getSelf().path().name(), this.coordinator.path().name(), cause);
+        this.startLeaderElection();
     }
 
     private void onTimeout(MessageTimeout message) {
@@ -342,11 +373,15 @@ public class Cohort extends AbstractActor {
                 break;
             case UPDATE_REQUEST:
                 assert message.payload == MessageTypes.UPDATE;
-                onUpdateRequestTimeout(message.topic);
+                onUpdateRequestTimeout((MessageTypes) message.payload);
                 break;
             case UPDATE:
                 assert message.payload == MessageTypes.ACK;
-                onUpdateTimeout(message.topic, getSender());
+                onUpdateTimeout((MessageTypes) message.payload, getSender());
+                break;
+            case ACK:
+                assert message.payload == MessageTypes.WRITEOK;
+                onACKTimeout((MessageTypes) message.payload);
                 break;
             default:
                 System.out.println("Received unknown timeout: " + message.topic);
@@ -369,9 +404,6 @@ public class Cohort extends AbstractActor {
         return receiveBuilder()
                 .matchAny(msg -> {
                 })
-//                .matchAny(msg -> {
-//                    System.out.println("deferring message"+ msg.toString());
-//                })
                 .build();
     }
 }

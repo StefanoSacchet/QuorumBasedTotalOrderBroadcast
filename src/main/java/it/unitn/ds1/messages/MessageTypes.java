@@ -18,5 +18,4 @@ public enum MessageTypes {
     TEST_READ,
     TEST_UPDATE,
     REMOVE_CRASHED,
-    // todo aggiungere i messaggi per 2pc
 }

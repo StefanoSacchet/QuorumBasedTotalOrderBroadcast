@@ -310,21 +310,37 @@ public class Cohort extends AbstractActor {
         }
     }
 
-    private void onCommandCrash() {
+    private void cancelAllTimeouts(){
+        if (this.cohortHeartbeatTimeout != null) {
+            this.cohortHeartbeatTimeout.cancel();
+        }
+        // cancel all remaining timeout
+        for (List<Cancellable> timersList : this.timersBroadcast.values()) {
+            for (Cancellable timer : timersList) {
+                timer.cancel();
+            }
+        }
         // if coordinator crashes cancel all heartbeats
         if (this.isCoordinator) {
             for (Cancellable timer : this.coordinatorHeartbeatTimeouts) {
                 timer.cancel();
             }
-        } else {
-            // TODO create method clear all timeouts
-            if (this.cohortHeartbeatTimeout != null) {
-                this.cohortHeartbeatTimeout.cancel();
+            // access all timeouts in timersBroadcastCohorts
+            for (HashMap<MessageTypes, List<Cancellable>> timersCohort : this.timersBroadcastCohorts.values()) {
+                for (List<Cancellable> timersList : timersCohort.values()) {
+                    for (Cancellable timer : timersList) {
+                        timer.cancel();
+                    }
+                }
             }
         }
+    }
 
+    private void onCommandCrash() {
         this.isCrashed = true;
         getContext().become(crashed());
+        // the cohorts cancel the timeout for the heartbeat
+        this.cancelAllTimeouts();
     }
 
     private void onCommandMsg(MessageCommand message) {
@@ -344,6 +360,7 @@ public class Cohort extends AbstractActor {
     }
 
     private void startLeaderElection() {
+        this.cancelAllTimeouts();
         //TODO implement leader election
     }
 

@@ -22,7 +22,16 @@ public class CohortLogger extends Logger {
     }
 
     public void logCrash(String detectorID, String crashedID, MessageTypes cause) {
-        String logEntry = String.format("Cohort %s detected %s crashed due to no %s %n", detectorID, crashedID, cause);
+        String logEntry = String.format("Cohort %s detected %s crashed due to no %s%n", detectorID, crashedID, cause);
+        try {
+            Files.write(this.path, logEntry.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            System.err.println("Error writing to log file: " + e.getMessage());
+        }
+    }
+
+    public void logLeaderElectionStart(String firstActor, String secondActor){
+        String logEntry = String.format("Cohort %s started leader election %s crashed%n", firstActor, secondActor);
         try {
             Files.write(this.path, logEntry.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {

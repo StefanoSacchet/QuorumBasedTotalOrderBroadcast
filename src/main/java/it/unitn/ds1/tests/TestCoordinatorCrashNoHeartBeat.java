@@ -22,7 +22,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class TestCoordinatorCrash {
+public class TestCoordinatorCrashNoHeartBeat {
     @BeforeAll
     static void setUp() throws IOException, InterruptedException {
         DotenvLoader dotenv = DotenvLoader.getInstance();
@@ -63,7 +63,6 @@ public class TestCoordinatorCrash {
             clients.add(client);
         }
 
-        // make a given cohort crash
         CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_READ));
 
         try {
@@ -88,7 +87,7 @@ public class TestCoordinatorCrash {
     void testParseLogFile() throws IOException, InterruptedException {
         LogParser logParser = new LogParser(DotenvLoader.getInstance().getLogPath());
         List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
-        int expected = 6; // 2 for read req and response + N_COHORT - 1 (-1 is coordinator)
+        int expected = 10; // 2 for read req and response + N_COHORT - 1 (-1 is coordinator) + 4 for starting election
         assertEquals(expected, logEntries.size(), "There should be " + expected + " log entries");
 
         //check for read req and read done
@@ -104,12 +103,15 @@ public class TestCoordinatorCrash {
         assertTrue(readRequestFound, "Read request should be found");
         assertTrue(readDoneFound, "Read done should be found");
         int detectedCrashes = 0;
+        int startElectionCount = 0;
         for (LogParser.LogEntry entry : logEntries) {
             if (entry.type == LogType.COHORT_DETECTS_COHORT_CRASH && MessageTypes.valueOf(entry.causeOfCrash) == MessageTypes.HEARTBEAT) {
                 detectedCrashes++;
+            } else if (entry.type == LogType.LEADER_ELECTION_START && entry.secondActor.equals("cohort_0")) {
+                startElectionCount++;
             }
         }
         assertEquals(4, detectedCrashes, "There should be 4 detected crashes, because 4 replicas are alive");
-
+        assertEquals(4, startElectionCount, "There should be 4 election starting, because 4 replicas are alive");
     }
 }

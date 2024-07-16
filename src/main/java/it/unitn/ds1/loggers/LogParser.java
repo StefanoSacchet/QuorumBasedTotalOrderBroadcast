@@ -78,6 +78,9 @@ public class LogParser extends Logger {
                     type = LogType.COHORT_DETECTS_COHORT_CRASH;
                 }
                 break;
+            case "started":
+                type = LogType.LEADER_ELECTION_START;
+                break;
             default:
                 throw new RuntimeException("New log type found: " + parts[2]);
         }
@@ -100,6 +103,7 @@ public class LogParser extends Logger {
                 String clientID;
                 String replicaID;
                 String causeOfCrash;
+                String crashedActorID;
                 int value;
                 switch (type) {
                     case UPDATE:
@@ -125,15 +129,20 @@ public class LogParser extends Logger {
                         break;
                     case COHORT_DETECTS_COHORT_CRASH:
                         String detector = parts[1];
-                        String crashed = parts[3];
+                        crashedActorID = parts[3];
                         causeOfCrash = parts[8];
-                        logEntries.add(new LogEntry(type, detector, crashed, null, -1, causeOfCrash));
+                        logEntries.add(new LogEntry(type, detector, crashedActorID, null, -1, causeOfCrash));
                         break;
                     case UPDATE_REQ:
                         clientID = parts[1];
                         replicaID = parts[5];
                         value = Integer.parseInt(parts[8]);
                         logEntries.add(new LogEntry(type, clientID, replicaID, null, value,null));
+                        break;
+                    case LEADER_ELECTION_START:
+                        replicaID = parts[1];
+                        crashedActorID = parts[5];
+                        logEntries.add(new LogEntry(type, replicaID, crashedActorID, null, -1, null));
                         break;
                     default:
                         throw new Exception("Invalid log entry");

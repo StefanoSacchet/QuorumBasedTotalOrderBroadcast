@@ -5,10 +5,7 @@ import akka.actor.ActorRef;
 import akka.actor.Cancellable;
 import akka.actor.Props;
 
-import it.unitn.ds1.messages.Message;
-import it.unitn.ds1.messages.MessageCommand;
-import it.unitn.ds1.messages.MessageTimeout;
-import it.unitn.ds1.messages.MessageTypes;
+import it.unitn.ds1.messages.*;
 import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
 import it.unitn.ds1.loggers.CohortLogger;
@@ -277,6 +274,14 @@ public class Cohort extends AbstractActor {
         this.cohortHeartbeatTimeout = setTimeout(MessageTypes.HEARTBEAT, DotenvLoader.getInstance().getHeartbeatTimeout(), this.coordinator);
     }
 
+    // This method is called when the cohort receives a START_ELECTION message
+    // It's received when a cohort detects that the coordinator has crashed from UPDATE_REQUEST timeout
+    private void onStartElection(MessageTypes topic, List<ActorRef> cohorts) throws InterruptedException {
+        this.cancelAllTimeouts();
+        this.onSetNeighbors(cohorts);
+        getContext().become(leader_election());
+        startLeaderElection(topic);
+    }
 
     private void onMessage(Message<?> message) throws InterruptedException {
         ActorRef sender = getSender();
@@ -327,8 +332,19 @@ public class Cohort extends AbstractActor {
             case HEARTBEAT:
                 onHeartbeat(sender);
                 break;
+            case START_ELECTION:
+                assert message.payload instanceof List<?>;
+                if (isNeighborListCorrect((List<?>) message.payload)) {
+                    // This cast is safe because we've checked all elements are ActorRef instances
+                    @SuppressWarnings("unchecked") // Suppresses unchecked warning for this specific cast
+                    List<ActorRef> actorList = (List<ActorRef>) message.payload;
+                    onStartElection(message.topic, actorList);
+                } else {
+                    throw new InterruptedException("Error: Payload contains non-ActorRef elements.");
+                }
+                break;
             default:
-                System.out.println("Received message: " + message.topic + " with payload: " + message.payload);
+                System.out.println(getSelf().path().name() + " Received message: " + message.topic + " with payload: " + message.payload);
         }
     }
 
@@ -387,46 +403,55 @@ public class Cohort extends AbstractActor {
         }
     }
 
-    private void onHearthbeatTimeout(MessageTypes topic) {
+    private void onHeartbeatTimeout(MessageTypes topic) throws InterruptedException {
         System.out.println(getSelf().path().name() + " detected " + this.coordinator.path().name() + " crashed, no " + topic);
         this.logger.logCrash(getSelf().path().name(), this.coordinator.path().name(), topic);
+        this.startLeaderElection(topic);
     }
 
-    private void startLeaderElection() {
+    private void startLeaderElection(MessageTypes cause) throws InterruptedException {
         this.cancelAllTimeouts();
+        this.logger.logLeaderElectionStart(getSelf().path().name(), this.coordinator.path().name());
         // TODO implement leader election
+        if (cause.equals(MessageTypes.UPDATE)) {
+            // TODO handle broadcast
+            for (ActorRef cohort : this.cohorts) {
+                if (cohort.path().name().equals(getSelf().path().name())) {
+                    continue;
+                }
+                CommunicationWrapper.send(cohort, new Message<>(MessageTypes.START_ELECTION, this.cohorts), getSelf());
+            }
+        }
+        getContext().become(leader_election());
     }
 
-    private void onUpdateRequestTimeout(MessageTypes cause) {
+    private void onUpdateRequestTimeout(MessageTypes cause) throws InterruptedException {
         System.out.println(getSelf().path().name() + " detected coordinator crashed due to no " + cause);
         this.logger.logCrash(getSelf().path().name(), this.coordinator.path().name(), cause);
-        this.startLeaderElection();
+        this.startLeaderElection(cause);
     }
 
     private void onUpdateTimeout(MessageTypes cause, ActorRef crashedCohort) {
-        System.out.println("Cohort " + getSelf().path().name() + " detected " + crashedCohort.path().name() + " crashed due to no " + cause);
         this.logger.logCrash(getSelf().path().name(), crashedCohort.path().name(), cause);
         // remove the timeouts for the crashed cohort
         this.cancelCohortTimeouts(crashedCohort);
     }
 
-    private void onACKTimeout(MessageTypes cause) {
+    private void onACKTimeout(MessageTypes cause) throws InterruptedException {
         System.out.println("Cohort " + getSelf().path().name() + " detected " + this.coordinator.path().name() + " crashed due to no " + cause);
         this.logger.logCrash(getSelf().path().name(), this.coordinator.path().name(), cause);
-        this.startLeaderElection();
+        this.startLeaderElection(cause);
     }
 
     private void onTimeout(MessageTimeout message) throws InterruptedException {
         ActorRef crashedCohort = getSender();
         this.cohorts.remove(crashedCohort);
-        // System.out.println("Passing "+ this.cohorts+ "because the crashed one is " + crashedCohort.path().name());
-        for (ActorRef cohort : this.cohorts) {
-            CommunicationWrapper.send(cohort, new Message<>(MessageTypes.SET_NEIGHBORS, this.cohorts), getSelf());
-        }
+        // update my neighbors
+        onSetNeighbors(this.cohorts);
         switch (message.topic) {
             case HEARTBEAT:
                 assert message.payload == null;
-                onHearthbeatTimeout(message.topic);
+                onHeartbeatTimeout(message.topic);
                 break;
             case UPDATE_REQUEST:
                 assert message.payload == MessageTypes.UPDATE;
@@ -446,6 +471,15 @@ public class Cohort extends AbstractActor {
         //TODO start leader election and clear all timeouts
     }
 
+    private void onElection(MessageElection message) {
+        // TODO implement leader election
+    }
+
+    private void onMessageElectionMode(Message message) {
+        // TODO if we receive a read just return the value
+        // if we receive an update request, we save it for later
+    }
+
     // Here we define the mapping between the received message types and our actor methods
     @Override
     public Receive createReceive() {
@@ -461,6 +495,13 @@ public class Cohort extends AbstractActor {
         return receiveBuilder()
                 .matchAny(msg -> {
                 })
+                .build();
+    }
+
+    final AbstractActor.Receive leader_election() {
+        return receiveBuilder()
+                .match(MessageElection.class, this::onElection)
+                .match(Message.class, this::onMessageElectionMode)
                 .build();
     }
 }

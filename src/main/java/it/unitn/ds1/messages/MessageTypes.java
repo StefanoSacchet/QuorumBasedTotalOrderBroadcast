@@ -9,6 +9,7 @@ public enum MessageTypes {
     SET_COORDINATOR,
     SET_NEIGHBORS,
     HEARTBEAT,
+    START_ELECTION,
     ELECTION,
     SYNC,
     ACK,

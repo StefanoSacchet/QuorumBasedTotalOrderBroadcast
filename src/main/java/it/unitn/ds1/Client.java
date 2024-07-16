@@ -74,7 +74,7 @@ public class Client extends AbstractActor {
                 onCrashDetect((ActorRef) message.payload);
                 break;
             default:
-                System.out.println("Received unknown message: " + message.topic + " from " + getSender().path().name());
+                System.out.println(getSelf().path().name() + " Received unknown message: " + message.topic + " from " + getSender().path().name());
         }
     }
 
@@ -102,7 +102,7 @@ public class Client extends AbstractActor {
                 onSendUpdateRequest();
                 break;
             default:
-                System.out.println("Received unknown message from " + getSender().path().name());
+                System.out.println(getSelf().path().name() + " Received unknown message from " + getSender().path().name());
         }
     }
 

@@ -9,4 +9,7 @@ public enum LogType {
     // crashes
     CLIENT_DETECTS_COHORT_CRASH,
     COHORT_DETECTS_COHORT_CRASH,
+
+    // leader election
+    LEADER_ELECTION_START,
 }

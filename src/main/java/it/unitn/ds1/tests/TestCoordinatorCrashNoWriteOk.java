@@ -80,7 +80,7 @@ public class TestCoordinatorCrashNoWriteOk {
     void testParseLogFile() throws IOException, InterruptedException {
         LogParser logParser = new LogParser(DotenvLoader.getInstance().getLogPath());
         List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
-        int expected = 5; // N_COHORT - 1 (-1 is coordinator who crashed) + 1 for the write request
+        int expected = 9; // N_COHORT - 1 (-1 is coordinator who crashed) + 1 for the write request + 4 for start election
         assertEquals(expected, logEntries.size(), "There should be " + expected + " log entries");
 
         //check for read req and read done
@@ -95,11 +95,15 @@ public class TestCoordinatorCrashNoWriteOk {
         assertTrue(updateRequestFound, "There should be an update request from client_2 to cohort_2 with value 2000000");
         assertEquals(2000000, updateValue, "The value of the update request should be 2000000");
         int detectedCrashes = 0;
+        int startElectionCount = 0;
         for (LogParser.LogEntry entry : logEntries) {
             if (entry.type == LogType.COHORT_DETECTS_COHORT_CRASH && MessageTypes.valueOf(entry.causeOfCrash) == MessageTypes.WRITEOK) {
                 detectedCrashes++;
+            } else if (entry.type == LogType.LEADER_ELECTION_START && entry.secondActor.equals("cohort_0")) {
+                startElectionCount++;
             }
         }
         assertEquals(4, detectedCrashes, "There should be 4 detected crashes, because 4 replicas are alive");
+        assertEquals(4, startElectionCount, "There should be 4 election starting, because 4 replicas are alive");
     }
 }

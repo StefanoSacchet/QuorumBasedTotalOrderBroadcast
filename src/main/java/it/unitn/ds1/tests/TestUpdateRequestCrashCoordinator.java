@@ -25,6 +25,9 @@ public class TestUpdateRequestCrashCoordinator {
     @BeforeAll
     static void setUp() throws IOException, InterruptedException {
         DotenvLoader dotenv = DotenvLoader.getInstance();
+        // I want to delay the heartbeat in order to test the update request timeout
+        int originalHeartbeatTimeout = dotenv.getHeartbeatTimeout();
+        dotenv.setHeartbeatTimeout(5000);
         Logger.clearFile(dotenv.getLogPath());
         int N_COHORTS = dotenv.getNCohorts();
 
@@ -81,6 +84,8 @@ public class TestUpdateRequestCrashCoordinator {
 
         CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_UPDATE));
 
+        dotenv.setHeartbeatTimeout(originalHeartbeatTimeout);
+
         try {
             Thread.sleep(3000);
         } catch (InterruptedException e) {
@@ -94,7 +99,7 @@ public class TestUpdateRequestCrashCoordinator {
     void testParseLogFile() throws IOException, InterruptedException {
         LogParser logParser = new LogParser(DotenvLoader.getInstance().getLogPath());
         List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
-        int expected = 8; // 2 for read req and response + N_COHORT - 1 (-1 is coordinator)
+        int expected = 8; // 2 for read req and response + 1 for update_req + 1 for cohort detects crash + 4 for starting leader election
         assertEquals(expected, logEntries.size(), "There should be " + expected + " log entries");
 
         //check for read req and read done
@@ -111,19 +116,19 @@ public class TestUpdateRequestCrashCoordinator {
         assertTrue(readDoneFound, "Read done should be found");
         int detectedCrashes = 0;
         for (LogParser.LogEntry entry : logEntries) {
-            if (entry.type == LogType.COHORT_DETECTS_COHORT_CRASH && MessageTypes.valueOf(entry.causeOfCrash) == MessageTypes.HEARTBEAT) {
+            if (entry.type == LogType.COHORT_DETECTS_COHORT_CRASH && MessageTypes.valueOf(entry.causeOfCrash) == MessageTypes.UPDATE) {
                 detectedCrashes++;
             }
         }
-        assertEquals(4, detectedCrashes, "There should be 4 detected crashes, because 4 replicas are alive");
+        assertEquals(1, detectedCrashes, "There should be 4 detected crashes, because 4 replicas are alive");
 
-        //check for update and crash
+        // check for update and crash
         boolean updateRequestFound = false;
         boolean crashDetected = false;
         for (LogParser.LogEntry entry : logEntries) {
             if (entry.type == LogType.UPDATE_REQ && entry.firstActor.equals("client_2") && entry.secondActor.equals("cohort_2") && entry.value == 2000000) {
                 updateRequestFound = true;
-            } else if (entry.type == LogType.COHORT_DETECTS_COHORT_CRASH && entry.secondActor.equals("cohort_0") && MessageTypes.valueOf(entry.causeOfCrash) == MessageTypes.UPDATE) {
+            } else if (entry.type == LogType.LEADER_ELECTION_START && entry.secondActor.equals("cohort_0")) {
                 crashDetected = true;
             }
         }

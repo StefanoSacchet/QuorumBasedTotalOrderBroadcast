@@ -3,6 +3,7 @@ package it.unitn.ds1.tools;
 import io.github.cdimascio.dotenv.Dotenv;
 
 public class DotenvLoader {
+    private int HEARTBEAT_TIMEOUT;
     private static DotenvLoader instance;
     private final Dotenv dotenv;
 
@@ -11,7 +12,7 @@ public class DotenvLoader {
 
         int MAX_RTT = Integer.parseInt(dotenv.get("MAX_RTT"));
         int HEARTBEAT = Integer.parseInt(dotenv.get("HEARTBEAT_INTERVAL"));
-        int HEARTBEAT_TIMEOUT = Integer.parseInt(dotenv.get("HEARTBEAT_TIMEOUT"));
+        this.HEARTBEAT_TIMEOUT = Integer.parseInt(dotenv.get("HEARTBEAT_TIMEOUT"));
         int TIMEOUT = Integer.parseInt(dotenv.get("TIMEOUT"));
 
         assert MAX_RTT < TIMEOUT;
@@ -47,6 +48,10 @@ public class DotenvLoader {
     }
 
     public int getHeartbeatTimeout() {
-        return Integer.parseInt(dotenv.get("HEARTBEAT_TIMEOUT"));
+        return this.HEARTBEAT_TIMEOUT;
+    }
+
+    public void setHeartbeatTimeout(int timeout) {
+        this.HEARTBEAT_TIMEOUT = timeout;
     }
 }

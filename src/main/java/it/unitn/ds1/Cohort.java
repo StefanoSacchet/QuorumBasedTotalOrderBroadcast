@@ -14,6 +14,7 @@ import scala.concurrent.duration.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class Cohort extends AbstractActor {
@@ -40,12 +41,12 @@ public class Cohort extends AbstractActor {
     private Cancellable cohortHeartbeatTimeout;
 
     // timer for 2phase broadcast, used to detect if someone crashed in the inner network
-    private final HashMap<MessageTypes, List<Cancellable>> timersBroadcast;
+    private HashMap<MessageTypes, List<Cancellable>> timersBroadcast;
     // mapping from a message to the expected one, used if a timeout occurs
     private final HashMap<MessageTypes, MessageTypes> sentExpectedMap;
 
     //The coordinator needs to keep track of timersBroadcast for each cohort
-    private final HashMap<ActorRef, HashMap<MessageTypes, List<Cancellable>>> timersBroadcastCohorts;
+    private HashMap<ActorRef, HashMap<MessageTypes, List<Cancellable>>> timersBroadcastCohorts;
 
     private boolean noWriteOkResponse;
 
@@ -79,6 +80,7 @@ public class Cohort extends AbstractActor {
         this.sentExpectedMap.put(MessageTypes.UPDATE, MessageTypes.ACK);
         this.sentExpectedMap.put(MessageTypes.ACK, MessageTypes.WRITEOK);
         this.sentExpectedMap.put(MessageTypes.HEARTBEAT, null);
+        this.sentExpectedMap.put(MessageTypes.ELECTION, MessageTypes.ACK);
 
         // variable used to test the case where the coordinator crashes before sending writeok
         this.noWriteOkResponse = false;
@@ -136,8 +138,6 @@ public class Cohort extends AbstractActor {
         this.cohorts = cohorts;
         this.updatePredecessorSuccessor(cohorts);
 
-        // TODO this might break something
-        // if I receive the neighbors but it is not the first time, I do not have to set the timers again
         if (this.isCoordinator && this.coordinatorHeartbeatTimeouts.isEmpty()) {
             for (ActorRef cohort : this.cohorts) {
                 this.timersBroadcastCohorts.put(cohort, setTimersBroadcast());
@@ -250,6 +250,11 @@ public class Cohort extends AbstractActor {
         return neighbors.stream().allMatch(element -> element instanceof ActorRef);
     }
 
+    private boolean isCohortMapLeaderElectionCorrect(HashMap<?, ?> map) {
+        return map.keySet().stream().allMatch(element -> element instanceof ActorRef) &&
+                map.values().stream().allMatch(element -> element instanceof UpdateIdentifier);
+    }
+
     // how to declare generic type in fn signature
     // payload is a generic type
 
@@ -277,9 +282,8 @@ public class Cohort extends AbstractActor {
     // This method is called when the cohort receives a START_ELECTION message
     // It's received when a cohort detects that the coordinator has crashed from UPDATE_REQUEST timeout
     private void onStartElection(MessageTypes topic, List<ActorRef> cohorts) throws InterruptedException {
-        this.cancelAllTimeouts();
+        // this.cancelAllTimeouts();
         this.onSetNeighbors(cohorts);
-        getContext().become(leader_election());
         startLeaderElection(topic);
     }
 
@@ -318,7 +322,9 @@ public class Cohort extends AbstractActor {
                 if (this.isCoordinator) {
                     onACK(sender, message.topic);
                 } else {
-                    throw new InterruptedException("Not a coordinator");
+                    // TODO
+                    // throw new InterruptedException("Not a coordinator");
+                    System.out.println("Received ACK from " + sender.path().name());
                 }
                 break;
             case WRITEOK:
@@ -344,7 +350,7 @@ public class Cohort extends AbstractActor {
                 }
                 break;
             default:
-                System.out.println(getSelf().path().name() + " Received message: " + message.topic + " with payload: " + message.payload);
+                System.out.println(getSelf().path().name() + " Received message: " + message.topic + " with payload: " + message.payload + " from "+ sender.path().name());
         }
     }
 
@@ -412,23 +418,32 @@ public class Cohort extends AbstractActor {
     private void startLeaderElection(MessageTypes cause) throws InterruptedException {
         this.cancelAllTimeouts();
         this.logger.logLeaderElectionStart(getSelf().path().name(), this.coordinator.path().name());
-        // TODO implement leader election
-        if (cause.equals(MessageTypes.UPDATE)) {
-            // TODO handle broadcast
-            for (ActorRef cohort : this.cohorts) {
-                if (cohort.path().name().equals(getSelf().path().name())) {
-                    continue;
-                }
-                CommunicationWrapper.send(cohort, new Message<>(MessageTypes.START_ELECTION, this.cohorts), getSelf());
-            }
-        }
         getContext().become(leader_election());
+
+        try {
+            Thread.sleep(DotenvLoader.getInstance().getRTT());
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
+        // now we all are in leader election mode and we are ready to perform it
+        HashMap<ActorRef, UpdateIdentifier> payload = new HashMap<>();
+        payload.put(getSelf(), this.updateIdentifier);
+        System.out.println("Cohort " + getSelf().path().name() + " starting leader election to " + this.successor.path().name());
+        CommunicationWrapper.send(this.successor, new MessageElection<>(MessageTypes.ELECTION, payload), getSelf());
+        Cancellable timeout = setTimeout(MessageTypes.ELECTION, DotenvLoader.getInstance().getTimeout(), this.successor);
+        MessageTypes key = this.sentExpectedMap.get(MessageTypes.ELECTION);
+        this.timersBroadcast.get(key).add(timeout);
     }
 
     private void onUpdateRequestTimeout(MessageTypes cause) throws InterruptedException {
         System.out.println(getSelf().path().name() + " detected coordinator crashed due to no " + cause);
         this.logger.logCrash(getSelf().path().name(), this.coordinator.path().name(), cause);
-        this.startLeaderElection(cause);
+
+        // send the start election message to all cohorts
+        for (ActorRef cohort : this.cohorts) {
+            CommunicationWrapper.send(cohort, new Message<>(MessageTypes.START_ELECTION, this.cohorts), getSelf());
+        }
     }
 
     private void onUpdateTimeout(MessageTypes cause, ActorRef crashedCohort) {
@@ -441,6 +456,10 @@ public class Cohort extends AbstractActor {
         System.out.println("Cohort " + getSelf().path().name() + " detected " + this.coordinator.path().name() + " crashed due to no " + cause);
         this.logger.logCrash(getSelf().path().name(), this.coordinator.path().name(), cause);
         this.startLeaderElection(cause);
+    }
+
+    private void onElectionSuccessorTimeout(MessageTypes cause, ActorRef sender) {
+        System.out.println("Cohort " + getSelf().path().name() + " detected " + sender.path().name() + " crashed due to no " + cause + " ELECTION MODE");
     }
 
     private void onTimeout(MessageTimeout message) throws InterruptedException {
@@ -465,17 +484,128 @@ public class Cohort extends AbstractActor {
                 assert message.payload == MessageTypes.WRITEOK;
                 onACKTimeout((MessageTypes) message.payload);
                 break;
+            case ELECTION:
+                assert message.payload == MessageTypes.ACK;
+                onElectionSuccessorTimeout((MessageTypes) message.payload, crashedCohort);
+                break;
             default:
                 System.out.println("Received unknown timeout: " + message.topic);
         }
         //TODO start leader election and clear all timeouts
     }
 
-    private void onElection(MessageElection message) {
-        // TODO implement leader election
+
+    // Here we have received a message from predecessor, I have to add me and forward
+    private void onElection(ActorRef sender, HashMap<ActorRef, UpdateIdentifier> map) throws InterruptedException {
+        System.out.println("I am " + getSelf().path().name() + " and I have received the election message from " + sender.path().name());
+        CommunicationWrapper.send(sender, new MessageElection<>(MessageTypes.ACK, null), getSelf());
+        System.out.println(getSelf().path().name() + " Sending ack to " + sender.path().name());
+        if (map.containsKey(getSelf())) {
+            // I am contained in the map, which means the leader election is finished, we have to find the new coordinator
+            ActorRef newLeader = chooseNewLeader(map);
+
+            if (newLeader.equals(getSelf())) {
+                // I am the new coordinator
+                this.isCoordinator = true;
+                this.timersBroadcastCohorts = new HashMap<ActorRef, HashMap<MessageTypes, List<Cancellable>>>();
+                System.out.println(getSelf().path().name() + " is the new coordinator");
+                for(ActorRef cohort : this.cohorts) {
+                    //TODO here we have to FLUSH of all messages via UpdateIdentifiers
+                    CommunicationWrapper.send(cohort, new MessageElection<>(MessageTypes.SYNC, null), getSelf());
+                }
+            } else {
+                System.out.println(getSelf().path().name() + " is not the new coordinator, the new coordinator is " + newLeader.path().name());
+            }
+
+        } else {
+            map.put(getSelf(), this.updateIdentifier);
+            CommunicationWrapper.send(this.successor, new MessageElection<>(MessageTypes.ELECTION, map), getSelf());
+            Cancellable timeout = setTimeout(MessageTypes.ELECTION, DotenvLoader.getInstance().getTimeout(), this.successor);
+            MessageTypes key = this.sentExpectedMap.get(MessageTypes.ELECTION);
+            this.timersBroadcast.get(key).add(timeout);
+        }
+
+    }
+
+    public ActorRef chooseNewLeader(HashMap<ActorRef, UpdateIdentifier> map) {
+        ActorRef newLeader = null;
+        int bestFirstValue = Integer.MIN_VALUE;
+        int bestSecondValue = Integer.MIN_VALUE;
+
+        for (Map.Entry<ActorRef, UpdateIdentifier> entry : map.entrySet()) {
+            ActorRef key = entry.getKey();
+            UpdateIdentifier value = entry.getValue();
+            int firstValue = value.getEpoch();
+            int secondValue = value.getSequence();
+
+            if (firstValue > bestFirstValue ||
+                    (firstValue == bestFirstValue && secondValue > bestSecondValue) ||
+                    (firstValue == bestFirstValue && secondValue == bestSecondValue && key.compareTo(newLeader) > 0)) {
+                newLeader = key;
+                bestFirstValue = firstValue;
+                bestSecondValue = secondValue;
+            }
+        }
+
+        return newLeader;
+    }
+
+    private void onACKElectionMode(ActorRef sender) {
+        // I have received the ack, so I have to remove the timeout
+        List<Cancellable> timeoutList = this.timersBroadcast.get(MessageTypes.ACK);
+        assert !timeoutList.isEmpty();
+        Cancellable timer = timeoutList.remove(0);
+        timer.cancel();
+    }
+
+    private void onSync(ActorRef sender) throws InterruptedException {
+        this.cancelAllTimeouts();
+        this.timersBroadcast = setTimersBroadcast();
+        getContext().become(createReceive());
+
+        if (this.isCoordinator){
+            // this.startHeartbeat();
+            // Todo something with flush
+        } else{
+            this.coordinator = sender;
+        }
+
+    }
+
+    private void onElectionMessageHandler(MessageElection message) throws InterruptedException {
+        ActorRef sender = getSender();
+        switch (message.topic) {
+            case ELECTION:
+                if (isCohortMapLeaderElectionCorrect((HashMap<?, ?>) message.payload)) {
+                    @SuppressWarnings("unchecked") // Suppresses unchecked warning for this specific cast
+                    HashMap<ActorRef, UpdateIdentifier> map = (HashMap<ActorRef, UpdateIdentifier>) message.payload;
+                    onElection(sender, map);
+                } else {
+                    throw new InterruptedException("Error: Payload contains non-ActorRef elements.");
+                }
+                break;
+            case ACK:
+                assert message.payload == null;
+                onACKElectionMode(sender);
+                break;
+            case SYNC:
+                assert message.payload == null;
+                onSync(sender);
+                break;
+            default:
+                System.out.println("UNKNOWN" + getSelf().path().name() + " Received message: " + message.topic + " with payload: " + message.payload);
+                break;
+        }
     }
 
     private void onMessageElectionMode(Message message) {
+        switch (message.topic){
+            case ELECTION:
+                break;
+            default:
+                System.out.println("std msg received");
+                break;
+        }
         // TODO if we receive a read just return the value
         // if we receive an update request, we save it for later
     }
@@ -500,7 +630,8 @@ public class Cohort extends AbstractActor {
 
     final AbstractActor.Receive leader_election() {
         return receiveBuilder()
-                .match(MessageElection.class, this::onElection)
+                .match(MessageTimeout.class, this::onTimeout)
+                .match(MessageElection.class, this::onElectionMessageHandler)
                 .match(Message.class, this::onMessageElectionMode)
                 .build();
     }

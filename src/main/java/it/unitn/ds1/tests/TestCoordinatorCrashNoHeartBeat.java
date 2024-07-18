@@ -4,6 +4,7 @@ import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import it.unitn.ds1.Client;
 import it.unitn.ds1.Cohort;
+import it.unitn.ds1.UpdateIdentifier;
 import it.unitn.ds1.loggers.LogParser;
 import it.unitn.ds1.loggers.LogType;
 import it.unitn.ds1.loggers.Logger;
@@ -63,19 +64,36 @@ public class TestCoordinatorCrashNoHeartBeat {
             clients.add(client);
         }
 
-        CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_READ));
-
         try {
             Thread.sleep(1000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
+        CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_UPDATE));
+        try {
+            Thread.sleep(1500);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
 
-        // make a given cohort crash
         CommunicationWrapper.send(cohorts.get(0), new MessageCommand(MessageTypes.CRASH));
 
         try {
-            Thread.sleep(3000);
+            Thread.sleep(2500);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
+        CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_UPDATE));
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_READ));
+
+        try {
+            Thread.sleep(1000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } finally {
@@ -87,21 +105,21 @@ public class TestCoordinatorCrashNoHeartBeat {
     void testParseLogFile() throws IOException, InterruptedException {
         LogParser logParser = new LogParser(DotenvLoader.getInstance().getLogPath());
         List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
-        int expected = 10; // 2 for read req and response + N_COHORT - 1 (-1 is coordinator) + 4 for starting election
+        int expected = 22; //  1 update req, 5 update done, 4 election starting, 1 leader found, 1 update req, 4 update done, 1 read req, 1 read done
         assertEquals(expected, logEntries.size(), "There should be " + expected + " log entries");
 
-        //check for read req and read done
-        boolean readRequestFound = false;
-        boolean readDoneFound = false;
+        boolean updateRequestFound = false;
+        int updateDoneCount = 0;
         for (LogParser.LogEntry entry : logEntries) {
-            if (entry.type == LogType.READ_REQ && entry.firstActor.equals("client_2") && entry.secondActor.equals("cohort_2")) {
-                readRequestFound = true;
-            } else if (entry.type == LogType.READ_DONE && entry.firstActor.equals("client_2") && entry.value == 0) {
-                readDoneFound = true;
+            if (entry.type == LogType.UPDATE_REQ && entry.firstActor.equals("client_1") && entry.secondActor.equals("cohort_1")) {
+                updateRequestFound = true;
+            } else if (entry.type == LogType.UPDATE && entry.value == 2000000 && entry.updateIdentifier.equals(new UpdateIdentifier(0, 1))) {
+                updateDoneCount++;
             }
         }
-        assertTrue(readRequestFound, "Read request should be found");
-        assertTrue(readDoneFound, "Read done should be found");
+        assertTrue(updateRequestFound, "Update request should be found");
+        assertEquals(5, updateDoneCount, "Update done should be found");
+
         int detectedCrashes = 0;
         int startElectionCount = 0;
         for (LogParser.LogEntry entry : logEntries) {
@@ -113,5 +131,45 @@ public class TestCoordinatorCrashNoHeartBeat {
         }
         assertEquals(4, detectedCrashes, "There should be 4 detected crashes, because 4 replicas are alive");
         assertEquals(4, startElectionCount, "There should be 4 election starting, because 4 replicas are alive");
+        //now we have to check leader
+        boolean leaderFound = false;
+        for (LogParser.LogEntry entry : logEntries) {
+            if (entry.type == LogType.LEADER_FOUND) {
+                leaderFound = true;
+                break;
+            }
+        }
+        assertTrue(leaderFound, "Leader should be found");
+
+        updateRequestFound = false;
+        updateDoneCount = 0;
+        boolean skipFirst = true;
+        for (LogParser.LogEntry entry : logEntries) {
+            if (entry.type == LogType.UPDATE_REQ && entry.firstActor.equals("client_1") && entry.secondActor.equals("cohort_1")) {
+                if (skipFirst) {
+                    skipFirst = false;
+                } else {
+                    updateRequestFound = true;
+                }
+            } else if (entry.type == LogType.UPDATE && entry.value == 2000000 && entry.updateIdentifier.equals(new UpdateIdentifier(1, 1))) {
+                updateDoneCount++;
+            }
+        }
+        assertTrue(updateRequestFound, "Update request should be found");
+        assertEquals(4, updateDoneCount, "Update done should be found");
+
+
+        //check for read req and read done
+        boolean readRequestFound = false;
+        boolean readDoneFound = false;
+        for (LogParser.LogEntry entry : logEntries) {
+            if (entry.type == LogType.READ_REQ && entry.firstActor.equals("client_1") && entry.secondActor.equals("cohort_1")) {
+                readRequestFound = true;
+            } else if (entry.type == LogType.READ_DONE && entry.firstActor.equals("client_1") && entry.value == 2000000) {
+                readDoneFound = true;
+            }
+        }
+        assertTrue(readRequestFound, "Read request should be found");
+        assertTrue(readDoneFound, "Read done should be found");
     }
 }

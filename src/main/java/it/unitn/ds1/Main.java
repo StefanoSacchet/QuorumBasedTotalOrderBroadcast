@@ -66,7 +66,19 @@ public class Main {
         // make a given cohort crash
         CommunicationWrapper.send(cohorts.get(0), new MessageCommand(MessageTypes.CRASH));
 
+        try {
+            Thread.sleep(2500);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
         CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_UPDATE));
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_READ));
 
 //        try {
 //            Thread.sleep(2000);

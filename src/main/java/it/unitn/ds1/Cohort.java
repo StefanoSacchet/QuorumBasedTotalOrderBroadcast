@@ -134,14 +134,19 @@ public class Cohort extends AbstractActor {
     }
 
 
+    private void initTimersBroadcastCohorts(List<ActorRef> cohorts) {
+        for (ActorRef cohort : cohorts) {
+            this.timersBroadcastCohorts.put(cohort, setTimersBroadcast());
+        }
+    }
+
+
     private void onSetNeighbors(List<ActorRef> cohorts) throws InterruptedException {
         this.cohorts = cohorts;
         this.updatePredecessorSuccessor(cohorts);
 
         if (this.isCoordinator && this.coordinatorHeartbeatTimeouts.isEmpty()) {
-            for (ActorRef cohort : this.cohorts) {
-                this.timersBroadcastCohorts.put(cohort, setTimersBroadcast());
-            }
+            initTimersBroadcastCohorts(cohorts);
             startHeartbeat();
         }
     }
@@ -186,7 +191,6 @@ public class Cohort extends AbstractActor {
         // remove the timer for the update
         List<Cancellable> timersList = this.timersBroadcast.get(topic);
         if (!timersList.isEmpty()) {
-            System.out.println("Received update from coordinator, Canceling timer");
             Cancellable timer = timersList.remove(0);
             timer.cancel();
         }
@@ -203,7 +207,6 @@ public class Cohort extends AbstractActor {
         HashMap<MessageTypes, List<Cancellable>> timersCohort = this.timersBroadcastCohorts.get(sender);
         List<Cancellable> timersList = timersCohort.get(MessageTypes.ACK);
         assert !timersList.isEmpty();
-        System.out.println("Received ACK from " + sender.path().name() + ", Canceling timer");
         Cancellable timer = timersList.remove(0);
         timer.cancel();
         // we have to make the coordinator crash to test this functionality
@@ -350,7 +353,7 @@ public class Cohort extends AbstractActor {
                 }
                 break;
             default:
-                System.out.println(getSelf().path().name() + " Received message: " + message.topic + " with payload: " + message.payload + " from "+ sender.path().name());
+                System.out.println(getSelf().path().name() + " Received message: " + message.topic + " with payload: " + message.payload + " from " + sender.path().name());
         }
     }
 
@@ -429,7 +432,7 @@ public class Cohort extends AbstractActor {
         // now we all are in leader election mode and we are ready to perform it
         HashMap<ActorRef, UpdateIdentifier> payload = new HashMap<>();
         payload.put(getSelf(), this.updateIdentifier);
-        System.out.println("Cohort " + getSelf().path().name() + " starting leader election to " + this.successor.path().name());
+        // System.out.println("Cohort " + getSelf().path().name() + " starting leader election to " + this.successor.path().name());
         CommunicationWrapper.send(this.successor, new MessageElection<>(MessageTypes.ELECTION, payload), getSelf());
         Cancellable timeout = setTimeout(MessageTypes.ELECTION, DotenvLoader.getInstance().getTimeout(), this.successor);
         MessageTypes key = this.sentExpectedMap.get(MessageTypes.ELECTION);
@@ -491,15 +494,14 @@ public class Cohort extends AbstractActor {
             default:
                 System.out.println("Received unknown timeout: " + message.topic);
         }
-        //TODO start leader election and clear all timeouts
     }
 
 
     // Here we have received a message from predecessor, I have to add me and forward
     private void onElection(ActorRef sender, HashMap<ActorRef, UpdateIdentifier> map) throws InterruptedException {
-        System.out.println("I am " + getSelf().path().name() + " and I have received the election message from " + sender.path().name());
+        // System.out.println("I am " + getSelf().path().name() + " and I have received the election message from " + sender.path().name());
         CommunicationWrapper.send(sender, new MessageElection<>(MessageTypes.ACK, null), getSelf());
-        System.out.println(getSelf().path().name() + " Sending ack to " + sender.path().name());
+        // System.out.println(getSelf().path().name() + " Sending ack to " + sender.path().name());
         if (map.containsKey(getSelf())) {
             // I am contained in the map, which means the leader election is finished, we have to find the new coordinator
             ActorRef newLeader = chooseNewLeader(map);
@@ -509,12 +511,13 @@ public class Cohort extends AbstractActor {
                 this.isCoordinator = true;
                 this.timersBroadcastCohorts = new HashMap<ActorRef, HashMap<MessageTypes, List<Cancellable>>>();
                 System.out.println(getSelf().path().name() + " is the new coordinator");
-                for(ActorRef cohort : this.cohorts) {
+                this.logger.logLeaderFound(getSelf().path().name());
+                for (ActorRef cohort : this.cohorts) {
                     //TODO here we have to FLUSH of all messages via UpdateIdentifiers
                     CommunicationWrapper.send(cohort, new MessageElection<>(MessageTypes.SYNC, null), getSelf());
                 }
             } else {
-                System.out.println(getSelf().path().name() + " is not the new coordinator, the new coordinator is " + newLeader.path().name());
+                // System.out.println(getSelf().path().name() + " is not the new coordinator, the new coordinator is " + newLeader.path().name());
             }
 
         } else {
@@ -562,12 +565,14 @@ public class Cohort extends AbstractActor {
         this.cancelAllTimeouts();
         this.timersBroadcast = setTimersBroadcast();
         getContext().become(createReceive());
+        this.coordinator = sender;
 
-        if (this.isCoordinator){
-            // this.startHeartbeat();
-            // Todo something with flush
-        } else{
-            this.coordinator = sender;
+        this.updateIdentifier.increaseEpoch();
+
+
+        if (this.isCoordinator) {
+            this.initTimersBroadcastCohorts(this.cohorts);
+            this.startHeartbeat();
         }
 
     }
@@ -599,7 +604,7 @@ public class Cohort extends AbstractActor {
     }
 
     private void onMessageElectionMode(Message message) {
-        switch (message.topic){
+        switch (message.topic) {
             case ELECTION:
                 break;
             default:

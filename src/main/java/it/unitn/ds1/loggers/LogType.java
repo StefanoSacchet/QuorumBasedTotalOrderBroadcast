@@ -12,4 +12,5 @@ public enum LogType {
 
     // leader election
     LEADER_ELECTION_START,
+    LEADER_FOUND,
 }

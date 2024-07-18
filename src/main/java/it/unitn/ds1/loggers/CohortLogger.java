@@ -38,4 +38,13 @@ public class CohortLogger extends Logger {
             System.err.println("Error writing to log file: " + e.getMessage());
         }
     }
+
+    public void logLeaderFound(String leaderID){
+        String logEntry = String.format("Cohort %s leader found %n", leaderID);
+        try {
+            Files.write(this.path, logEntry.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            System.err.println("Error writing to log file: " + e.getMessage());
+        }
+    }
 }

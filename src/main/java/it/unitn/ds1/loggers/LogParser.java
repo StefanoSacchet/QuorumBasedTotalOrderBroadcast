@@ -81,10 +81,12 @@ public class LogParser extends Logger {
             case "started":
                 type = LogType.LEADER_ELECTION_START;
                 break;
+            case "leader":
+                type = LogType.LEADER_FOUND;
+                break;
             default:
                 throw new RuntimeException("New log type found: " + parts[2]);
         }
-
         return type;
     }
 
@@ -144,8 +146,12 @@ public class LogParser extends Logger {
                         crashedActorID = parts[5];
                         logEntries.add(new LogEntry(type, replicaID, crashedActorID, null, -1, null));
                         break;
+                    case LEADER_FOUND:
+                        String leaderID = parts[1];
+                        logEntries.add(new LogEntry(type, leaderID, null, null, -1, null));
+                        break;
                     default:
-                        throw new Exception("Invalid log entry");
+                        throw new Exception("Invalid log entry"+ type);
                 }
             }
         } catch (Exception e) {

@@ -80,7 +80,7 @@ public class TestCoordinatorCrashNoWriteOk {
     void testParseLogFile() throws IOException, InterruptedException {
         LogParser logParser = new LogParser(DotenvLoader.getInstance().getLogPath());
         List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
-        int expected = 9; // N_COHORT - 1 (-1 is coordinator who crashed) + 1 for the write request + 4 for start election
+        int expected = 10; // N_COHORT - 1 (-1 is coordinator who crashed) + 1 for the write request + 4 for start election + 1 for leader found + 4 for leader found
         assertEquals(expected, logEntries.size(), "There should be " + expected + " log entries");
 
         //check for read req and read done
@@ -105,5 +105,14 @@ public class TestCoordinatorCrashNoWriteOk {
         }
         assertEquals(4, detectedCrashes, "There should be 4 detected crashes, because 4 replicas are alive");
         assertEquals(4, startElectionCount, "There should be 4 election starting, because 4 replicas are alive");
+
+        boolean leaderFound = false;
+        for (LogParser.LogEntry entry : logEntries) {
+            if (entry.type == LogType.LEADER_FOUND) {
+                leaderFound = true;
+                break;
+            }
+        }
+        assertTrue(leaderFound, "Leader should be found");
     }
 }

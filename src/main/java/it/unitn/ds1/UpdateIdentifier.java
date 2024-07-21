@@ -34,6 +34,13 @@ public class UpdateIdentifier implements Serializable {
         this.updateIdentifier.setSecond(0);
     }
 
+    public int compareTo(UpdateIdentifier updateIdentifier) {
+        if (this.getEpoch() == updateIdentifier.getEpoch()) {
+            return this.getSequence() - updateIdentifier.getSequence();
+        }
+        return this.getEpoch() - updateIdentifier.getEpoch();
+    }
+
     // override equals method
     @Override
     public boolean equals(Object obj) {

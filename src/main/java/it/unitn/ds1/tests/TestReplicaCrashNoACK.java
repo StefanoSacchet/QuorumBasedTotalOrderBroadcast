@@ -23,6 +23,15 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class TestReplicaCrashNoACK {
+
+    private static void threadSleep(int millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     @BeforeAll
     static void setUp() throws IOException, InterruptedException {
         DotenvLoader dotenv = DotenvLoader.getInstance();
@@ -63,23 +72,16 @@ public class TestReplicaCrashNoACK {
             clients.add(client);
         }
 
-
         // make a given cohort crash
         CommunicationWrapper.send(cohorts.get(1), new MessageCommand(MessageTypes.CRASH));
         CommunicationWrapper.send(cohorts.get(3), new MessageCommand(MessageTypes.CRASH));
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+
+        threadSleep(1000);
 
         CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_UPDATE));
 
-        try {
-            Thread.sleep(3000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        threadSleep(3000);
+        system.terminate();
     }
 
     @Test
@@ -116,9 +118,9 @@ public class TestReplicaCrashNoACK {
         int crashDetected = 0;
         for (LogParser.LogEntry entry : logEntries) {
             if (entry.type == LogType.COHORT_DETECTS_COHORT_CRASH && entry.firstActor.equals("cohort_0") && MessageTypes.valueOf(entry.causeOfCrash) == MessageTypes.ACK) {
-                crashDetected ++;
+                crashDetected++;
             }
         }
-        assertEquals(crashedCohorts,crashDetected, "Coordinator crash due to no response to update request should be found");
+        assertEquals(crashedCohorts, crashDetected, "Coordinator crash due to no response to update request should be found");
     }
 }

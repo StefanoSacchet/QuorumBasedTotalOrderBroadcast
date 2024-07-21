@@ -7,7 +7,6 @@ import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 
 
-import it.unitn.ds1.messages.MessageCrash;
 import it.unitn.ds1.messages.MessageCommand;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.messages.Message;
@@ -17,6 +16,13 @@ import it.unitn.ds1.loggers.Logger;
 
 public class Main {
 
+    private static void threadSleep(int millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     public static void main(String[] args) throws InterruptedException {
         DotenvLoader dotenv = DotenvLoader.getInstance();
@@ -57,27 +63,17 @@ public class Main {
             clients.add(client);
         }
 
-        try {
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        threadSleep(1000);
 
         // make a given cohort crash
-        CommunicationWrapper.send(cohorts.get(0), new MessageCommand(MessageTypes.CRASH));
+        CommunicationWrapper.send(cohorts.get(0), new MessageCommand(MessageTypes.CRASH_ONLY_ONE_WRITEOK));
 
-        try {
-            Thread.sleep(2500);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        threadSleep(2500);
 
         CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_UPDATE));
-        try {
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+
+        threadSleep(1000);
+
         CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_READ));
 
 //        try {
@@ -106,12 +102,7 @@ public class Main {
 //        Message<Object> msg2 = new Message<Object>(MessageTypes.READ_REQUEST, null);
 //        CommunicationWrapper.send(cohorts.get(0), msg2, clients.get(0));
 
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } finally {
-//            system.terminate();
-        }
+        threadSleep(3000);
+        system.terminate();
     }
 }

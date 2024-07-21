@@ -1,5 +1,6 @@
 package it.unitn.ds1.loggers;
 
+import it.unitn.ds1.UpdateIdentifier;
 import it.unitn.ds1.messages.MessageTypes;
 
 import java.io.IOException;
@@ -30,7 +31,7 @@ public class CohortLogger extends Logger {
         }
     }
 
-    public void logLeaderElectionStart(String firstActor, String secondActor){
+    public void logLeaderElectionStart(String firstActor, String secondActor) {
         String logEntry = String.format("Cohort %s started leader election %s crashed%n", firstActor, secondActor);
         try {
             Files.write(this.path, logEntry.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
@@ -39,8 +40,17 @@ public class CohortLogger extends Logger {
         }
     }
 
-    public void logLeaderFound(String leaderID){
+    public void logLeaderFound(String leaderID) {
         String logEntry = String.format("Cohort %s leader found %n", leaderID);
+        try {
+            Files.write(this.path, logEntry.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            System.err.println("Error writing to log file: " + e.getMessage());
+        }
+    }
+
+    public void logFlush(String replicaID, int oldState, int newState) {
+        String logEntry = String.format("Replica %s flush state %s -> %s%n", replicaID, oldState, newState);
         try {
             Files.write(this.path, logEntry.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {

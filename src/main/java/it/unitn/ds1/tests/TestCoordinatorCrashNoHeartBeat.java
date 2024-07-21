@@ -24,6 +24,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestCoordinatorCrashNoHeartBeat {
+
+    private static void threadSleep(int millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     @BeforeAll
     static void setUp() throws IOException, InterruptedException {
         DotenvLoader dotenv = DotenvLoader.getInstance();
@@ -64,41 +73,25 @@ public class TestCoordinatorCrashNoHeartBeat {
             clients.add(client);
         }
 
-        try {
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        threadSleep(1000);
+
         CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_UPDATE));
-        try {
-            Thread.sleep(1500);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+
+        threadSleep(1000);
 
         CommunicationWrapper.send(cohorts.get(0), new MessageCommand(MessageTypes.CRASH));
 
-        try {
-            Thread.sleep(2500);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        // sleep to make heartbeat timeout trigger
+        threadSleep(3000);
 
         CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_UPDATE));
-        try {
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+
+        threadSleep(1000);
+
         CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_READ));
 
-        try {
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } finally {
-            system.terminate();
-        }
+        threadSleep(3000);
+        system.terminate();
     }
 
     @Test

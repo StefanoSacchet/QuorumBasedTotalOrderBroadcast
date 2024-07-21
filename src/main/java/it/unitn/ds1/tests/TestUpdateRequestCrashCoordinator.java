@@ -22,6 +22,15 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class TestUpdateRequestCrashCoordinator {
+
+    private static void threadSleep(int millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     @BeforeAll
     static void setUp() throws IOException, InterruptedException {
         DotenvLoader dotenv = DotenvLoader.getInstance();
@@ -65,34 +74,21 @@ public class TestUpdateRequestCrashCoordinator {
             clients.add(client);
         }
 
-
         CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_READ));
 
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        threadSleep(1000);
 
         // make a given cohort crash
         CommunicationWrapper.send(cohorts.get(0), new MessageCommand(MessageTypes.CRASH));
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+
+        threadSleep(1000);
 
         CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_UPDATE));
 
         dotenv.setHeartbeatTimeout(originalHeartbeatTimeout);
 
-        try {
-            Thread.sleep(3000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } finally {
-            system.terminate();
-        }
+        threadSleep(3000);
+        system.terminate();
     }
 
     @Test

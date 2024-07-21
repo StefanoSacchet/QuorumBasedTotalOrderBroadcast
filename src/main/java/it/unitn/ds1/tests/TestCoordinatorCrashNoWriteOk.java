@@ -23,6 +23,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestCoordinatorCrashNoWriteOk {
+
+    private static void threadSleep(int millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     @BeforeAll
     static void setUp() throws IOException, InterruptedException {
         DotenvLoader dotenv = DotenvLoader.getInstance();
@@ -63,17 +72,11 @@ public class TestCoordinatorCrashNoWriteOk {
             clients.add(client);
         }
 
-
         CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_UPDATE));
-        CommunicationWrapper.send(coordinator, new MessageCommand(MessageTypes.CRASHNOWRITEOK));
+        CommunicationWrapper.send(coordinator, new MessageCommand(MessageTypes.CRASH_NO_WRITEOK));
 
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        } finally {
-            system.terminate();
-        }
+        threadSleep(3000);
+        system.terminate();
     }
 
     @Test

@@ -25,6 +25,14 @@ import java.util.List;
 
 public class TestOne {
 
+    private static void threadSleep(int millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     @BeforeAll
     static void setUp() throws IOException, InterruptedException {
         // Create a test log file
@@ -72,28 +80,17 @@ public class TestOne {
 
         CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_READ));
 
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        threadSleep(1000);
 
         CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_UPDATE));
 
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        threadSleep(1000);
 
         CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_READ));
         System.out.println("finished setup test one");
 
-        try {
-            Thread.sleep(500);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        threadSleep(3000);
+        system.terminate();
     }
 
     @Test
@@ -104,7 +101,6 @@ public class TestOne {
         int expected = N_COHORTS + 5; // 2 read req and read done,1 update req, N_COHORTS  update done
 
         assertEquals(expected, logEntries.size(), "There should be" + expected + " log entries");
-
         assertEquals(expected, logEntries.size(), "There should be " + expected + " log entries");
 
         //check read req and read done

@@ -49,6 +49,7 @@ public class Cohort extends AbstractActor {
     private HashMap<ActorRef, HashMap<MessageTypes, List<Cancellable>>> timersBroadcastCohorts;
 
     private boolean noWriteOkResponse;
+    private boolean onlyOneWriteOkRes;
 
     public static Props props(boolean isCoordinator) {
         return Props.create(Cohort.class, () -> new Cohort(isCoordinator));
@@ -84,6 +85,7 @@ public class Cohort extends AbstractActor {
 
         // variable used to test the case where the coordinator crashes before sending writeok
         this.noWriteOkResponse = false;
+        this.onlyOneWriteOkRes = false;
     }
 
     private HashMap<MessageTypes, List<Cancellable>> setTimersBroadcast() {
@@ -206,7 +208,10 @@ public class Cohort extends AbstractActor {
     private void onACK(ActorRef sender, MessageTypes topic) throws InterruptedException {
         HashMap<MessageTypes, List<Cancellable>> timersCohort = this.timersBroadcastCohorts.get(sender);
         List<Cancellable> timersList = timersCohort.get(MessageTypes.ACK);
-        assert !timersList.isEmpty();
+        if (timersList.isEmpty()) {
+            // here we receive an ack from the election mode that was late so we want to ignore it
+            return;
+        }
         Cancellable timer = timersList.remove(0);
         timer.cancel();
         // we have to make the coordinator crash to test this functionality
@@ -219,6 +224,12 @@ public class Cohort extends AbstractActor {
         if (this.voters >= this.cohorts.size() / 2 + 1) {
             for (ActorRef cohort : this.cohorts) {
                 CommunicationWrapper.send(cohort, new Message<Integer>(MessageTypes.WRITEOK, this.unstableState), getSelf());
+                // if we want to test the case where only a part of cohorts get the writeok
+                if (this.onlyOneWriteOkRes && cohort.path().name().equals(this.cohorts.get(1).path().name())) {
+                    System.out.println("Crashing cohort " + getSelf().path().name());
+                    CommunicationWrapper.send(getSelf(), new MessageCommand(MessageTypes.CRASH));
+                    break;
+                }
             }
             this.voters = 0;
         }
@@ -405,9 +416,8 @@ public class Cohort extends AbstractActor {
     private void onCommandMsg(MessageCommand message) {
         switch (message.topic) {
             case CRASH -> onCommandCrash();
-            case CRASHNOWRITEOK -> {
-                this.noWriteOkResponse = true;
-            }
+            case CRASH_NO_WRITEOK -> this.noWriteOkResponse = true;
+            case CRASH_ONLY_ONE_WRITEOK -> this.onlyOneWriteOkRes = true;
             default -> System.out.println("Received unknown command: " + message.topic);
         }
     }
@@ -496,12 +506,22 @@ public class Cohort extends AbstractActor {
         }
     }
 
+    // get the messages that have to be flushed given the last update for a cohort
+    private HashMap<UpdateIdentifier, Integer> getFlush(UpdateIdentifier lastUpdate) {
+        HashMap<UpdateIdentifier, Integer> payload = new HashMap<UpdateIdentifier, Integer>();
+        for (Map.Entry<UpdateIdentifier, Integer> entry : this.history.entrySet()) {
+            UpdateIdentifier key = entry.getKey();
+            Integer value = entry.getValue();
+            if (key.compareTo(lastUpdate) > 0) {
+                payload.put(key, value);
+            }
+        }
+        return payload;
+    }
 
     // Here we have received a message from predecessor, I have to add me and forward
     private void onElection(ActorRef sender, HashMap<ActorRef, UpdateIdentifier> map) throws InterruptedException {
-        // System.out.println("I am " + getSelf().path().name() + " and I have received the election message from " + sender.path().name());
         CommunicationWrapper.send(sender, new MessageElection<>(MessageTypes.ACK, null), getSelf());
-        // System.out.println(getSelf().path().name() + " Sending ack to " + sender.path().name());
         if (map.containsKey(getSelf())) {
             // I am contained in the map, which means the leader election is finished, we have to find the new coordinator
             ActorRef newLeader = chooseNewLeader(map);
@@ -512,9 +532,10 @@ public class Cohort extends AbstractActor {
                 this.timersBroadcastCohorts = new HashMap<ActorRef, HashMap<MessageTypes, List<Cancellable>>>();
                 System.out.println(getSelf().path().name() + " is the new coordinator");
                 this.logger.logLeaderFound(getSelf().path().name());
+
                 for (ActorRef cohort : this.cohorts) {
-                    //TODO here we have to FLUSH of all messages via UpdateIdentifiers
-                    CommunicationWrapper.send(cohort, new MessageElection<>(MessageTypes.SYNC, null), getSelf());
+                    HashMap<UpdateIdentifier, Integer> payload = getFlush(map.get(cohort));
+                    CommunicationWrapper.send(cohort, new MessageElection<>(MessageTypes.SYNC, payload), getSelf());
                 }
             } else {
                 // System.out.println(getSelf().path().name() + " is not the new coordinator, the new coordinator is " + newLeader.path().name());
@@ -561,20 +582,41 @@ public class Cohort extends AbstractActor {
         timer.cancel();
     }
 
-    private void onSync(ActorRef sender) throws InterruptedException {
+    private void onSync(ActorRef sender, HashMap<UpdateIdentifier, Integer> flushedUpdates) throws InterruptedException {
         this.cancelAllTimeouts();
         this.timersBroadcast = setTimersBroadcast();
         getContext().become(createReceive());
         this.coordinator = sender;
 
+        // I have to update my history with the flushed updates
+        System.out.println(getSelf().path().name() + " received sync");
+        System.out.println("Flushing updates: " + flushedUpdates);
+
+        this.history.putAll(flushedUpdates);
+        // search the last update in the flushed updates and set the state
+        int oldState = this.state;
+        for (Map.Entry<UpdateIdentifier, Integer> entry : flushedUpdates.entrySet()) {
+            UpdateIdentifier key = entry.getKey();
+            Integer value = entry.getValue();
+            if (key.compareTo(this.updateIdentifier) > 0) {
+                this.state = value;
+            }
+        }
         this.updateIdentifier.increaseEpoch();
 
+        if (!flushedUpdates.isEmpty()) {
+            this.logger.logFlush(getSelf().path().name(), oldState, this.state);
+        }
 
         if (this.isCoordinator) {
             this.initTimersBroadcastCohorts(this.cohorts);
             this.startHeartbeat();
         }
+    }
 
+    private boolean isUpdateIDIntCorrect(HashMap<?, ?> map) {
+        return map.keySet().stream().allMatch(element -> element instanceof UpdateIdentifier) &&
+                map.values().stream().allMatch(element -> element instanceof Integer);
     }
 
     private void onElectionMessageHandler(MessageElection message) throws InterruptedException {
@@ -594,8 +636,14 @@ public class Cohort extends AbstractActor {
                 onACKElectionMode(sender);
                 break;
             case SYNC:
-                assert message.payload == null;
-                onSync(sender);
+                assert message.payload instanceof HashMap<?, ?>;
+                if (isUpdateIDIntCorrect((HashMap<?, ?>) message.payload)) {
+                    @SuppressWarnings("unchecked") // Suppresses unchecked warning for this specific cast
+                    HashMap<UpdateIdentifier, Integer> map = (HashMap<UpdateIdentifier, Integer>) message.payload;
+                    onSync(sender, map);
+                } else {
+                    throw new InterruptedException("Error: Payload contains non-ActorRef elements.");
+                }
                 break;
             default:
                 System.out.println("UNKNOWN" + getSelf().path().name() + " Received message: " + message.topic + " with payload: " + message.payload);

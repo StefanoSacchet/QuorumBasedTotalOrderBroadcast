@@ -5,6 +5,7 @@ public enum LogType {
     READ_REQ,
     READ_DONE,
     UPDATE_REQ,
+    FLUSH,
 
     // crashes
     CLIENT_DETECTS_COHORT_CRASH,

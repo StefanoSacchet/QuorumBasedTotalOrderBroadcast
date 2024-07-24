@@ -81,12 +81,12 @@ public class TestFlush {
 
         CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_UPDATE));
 
-        threadSleep(3000);
+        threadSleep(4000);
         system.terminate();
     }
 
     @Test
-    void testParseLogFile() throws IOException, InterruptedException {
+    void testParseLogFile() {
         LogParser logParser = new LogParser(DotenvLoader.getInstance().getLogPath());
         List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
         int expected = 15; // 1 client read_req + 2 replicas update done + 3 replicas no writeOk + 3 start leader election + 1 replica no heartbeat + 1 replica start election + 1 leader found + 3 flushes
@@ -96,17 +96,17 @@ public class TestFlush {
         boolean updateRequestFound = false;
         int updateValue = 0;
         for (LogParser.LogEntry entry : logEntries) {
-            if (entry.type == LogType.UPDATE_REQ && entry.firstActor.equals("client_1") && entry.secondActor.equals("cohort_1") && entry.value == 2000000) {
+            if (entry.type == LogType.UPDATE_REQ && entry.firstActor.equals("client_1") && entry.secondActor.equals("cohort_1") && entry.value == 1000000) {
                 updateRequestFound = true;
                 updateValue = entry.value;
             }
         }
         assertTrue(updateRequestFound, "There should be an update request from client_2 to cohort_2 with value 2000000");
-        assertEquals(2000000, updateValue, "The value of the update request should be 2000000");
+        assertEquals(1000000, updateValue, "The value of the update request should be 2000000");
 
         int updateDoneCount = 0;
         for (LogParser.LogEntry entry : logEntries) {
-            if (entry.type == LogType.UPDATE && entry.value == 2000000 && entry.updateIdentifier.getEpoch() == 0 && entry.updateIdentifier.getSequence() == 1) {
+            if (entry.type == LogType.UPDATE && entry.value == 1000000 && entry.updateIdentifier.getEpoch() == 0 && entry.updateIdentifier.getSequence() == 1) {
                 updateDoneCount++;
             }
         }
@@ -135,7 +135,7 @@ public class TestFlush {
 
         int flushCount = 0;
         for (LogParser.LogEntry entry : logEntries) {
-            if (entry.type == LogType.FLUSH && entry.oldState == 0 && entry.value == 2000000) {
+            if (entry.type == LogType.FLUSH && entry.oldState == 0 && entry.value == 1000000) {
                 flushCount++;
             }
         }

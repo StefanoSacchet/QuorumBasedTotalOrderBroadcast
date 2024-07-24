@@ -87,7 +87,7 @@ public class TestUpdateRequestCrashCoordinator {
 
         dotenv.setHeartbeatTimeout(originalHeartbeatTimeout);
 
-        threadSleep(3000);
+        threadSleep(4000);
         system.terminate();
     }
 

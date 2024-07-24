@@ -90,7 +90,7 @@ public class TestCoordinatorCrashNoHeartBeat {
 
         CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_READ));
 
-        threadSleep(3000);
+        threadSleep(4000);
         system.terminate();
     }
 
@@ -106,7 +106,7 @@ public class TestCoordinatorCrashNoHeartBeat {
         for (LogParser.LogEntry entry : logEntries) {
             if (entry.type == LogType.UPDATE_REQ && entry.firstActor.equals("client_1") && entry.secondActor.equals("cohort_1")) {
                 updateRequestFound = true;
-            } else if (entry.type == LogType.UPDATE && entry.value == 2000000 && entry.updateIdentifier.equals(new UpdateIdentifier(0, 1))) {
+            } else if (entry.type == LogType.UPDATE && entry.value == 1000000 && entry.updateIdentifier.equals(new UpdateIdentifier(0, 1))) {
                 updateDoneCount++;
             }
         }
@@ -144,13 +144,12 @@ public class TestCoordinatorCrashNoHeartBeat {
                 } else {
                     updateRequestFound = true;
                 }
-            } else if (entry.type == LogType.UPDATE && entry.value == 2000000 && entry.updateIdentifier.equals(new UpdateIdentifier(1, 1))) {
+            } else if (entry.type == LogType.UPDATE && entry.value == 1000000 && entry.updateIdentifier.equals(new UpdateIdentifier(1, 1))) {
                 updateDoneCount++;
             }
         }
         assertTrue(updateRequestFound, "Update request should be found");
         assertEquals(4, updateDoneCount, "Update done should be found");
-
 
         //check for read req and read done
         boolean readRequestFound = false;
@@ -158,7 +157,7 @@ public class TestCoordinatorCrashNoHeartBeat {
         for (LogParser.LogEntry entry : logEntries) {
             if (entry.type == LogType.READ_REQ && entry.firstActor.equals("client_1") && entry.secondActor.equals("cohort_1")) {
                 readRequestFound = true;
-            } else if (entry.type == LogType.READ_DONE && entry.firstActor.equals("client_1") && entry.value == 2000000) {
+            } else if (entry.type == LogType.READ_DONE && entry.firstActor.equals("client_1") && entry.value == 1000000) {
                 readDoneFound = true;
             }
         }

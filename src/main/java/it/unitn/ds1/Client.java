@@ -86,9 +86,10 @@ public class Client extends AbstractActor {
         CommunicationWrapper.send(this.rxCohort, sendMsg, getSelf());
     }
 
-    private void onSendUpdateRequest() throws InterruptedException{
-        this.logger.logUpdateReq(getSelf().path().name(), this.rxCohort.path().name(), 2000000);
-        Message<Object> sendMsg = new Message<>(MessageTypes.UPDATE_REQUEST, 2000000);
+    private void onSendUpdateRequest() throws InterruptedException {
+        int value = Integer.parseInt(getSelf().path().name().split("_")[1]) * 1_000_000;
+        this.logger.logUpdateReq(getSelf().path().name(), this.rxCohort.path().name(), value);
+        Message<Object> sendMsg = new Message<>(MessageTypes.UPDATE_REQUEST, value);
         CommunicationWrapper.send(this.rxCohort, sendMsg, getSelf());
     }
 
@@ -105,8 +106,6 @@ public class Client extends AbstractActor {
                 System.out.println(getSelf().path().name() + " Received unknown message from " + getSender().path().name());
         }
     }
-
-
 
     // Here we define the mapping between the received message types and our actor methods
     @Override

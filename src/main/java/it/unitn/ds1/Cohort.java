@@ -5,10 +5,14 @@ import akka.actor.ActorRef;
 import akka.actor.Cancellable;
 import akka.actor.Props;
 
+import com.typesafe.config.ConfigException;
 import it.unitn.ds1.messages.*;
 import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
 import it.unitn.ds1.loggers.CohortLogger;
+import it.unitn.ds1.tools.InstanceController;
+import it.unitn.ds1.tools.Pair;
+import scala.Int;
 import scala.concurrent.duration.Duration;
 
 import java.util.ArrayList;
@@ -27,11 +31,14 @@ public class Cohort extends AbstractActor {
     private ActorRef coordinator;
 
     private int state;
-    private int voters;
-    private int unstableState;
+    //    private int voters;
+//    private int unstableState;
+
+    private final HashMap<UpdateIdentifier, Integer> votersState;
+    private final HashMap<UpdateIdentifier, Integer> unstableStateMap;
 
     private final UpdateIdentifier updateIdentifier;
-    private HashMap<UpdateIdentifier, Integer> history;
+    private final HashMap<UpdateIdentifier, Integer> history;
 
     private final CohortLogger logger;
 
@@ -59,10 +66,12 @@ public class Cohort extends AbstractActor {
         this.isCoordinator = isCoordinator;
         this.isCrashed = false;
         this.state = 0;
-        this.voters = 0;
-        this.unstableState = 0;
+//        this.voters = 0;
+//        this.unstableState = 0;
+        this.votersState = new HashMap<>();
+        this.unstableStateMap = new HashMap<>();
         this.updateIdentifier = new UpdateIdentifier(0, 0);
-        this.history = new HashMap<UpdateIdentifier, Integer>();
+        this.history = new HashMap<>();
         this.logger = new CohortLogger(DotenvLoader.getInstance().getLogPath());
         this.coordinatorHeartbeatTimeouts = new ArrayList<>();
         this.cohortHeartbeatTimeout = null;
@@ -158,15 +167,14 @@ public class Cohort extends AbstractActor {
     }
 
     private void onReadRequest(ActorRef sender) throws InterruptedException {
-        CommunicationWrapper.send(sender, new Message<Integer>(MessageTypes.READ, this.state), getSelf());
+        CommunicationWrapper.send(sender, new Message<>(MessageTypes.READ, this.state), getSelf());
     }
 
     private void onUpdateRequest(Integer newState, ActorRef sender) throws InterruptedException {
         if (this.isCoordinator) {
-            this.unstableState = newState;
             startQuorum(newState);
         } else {
-            CommunicationWrapper.send(this.coordinator, new Message<Integer>(MessageTypes.UPDATE_REQUEST, newState), getSelf());
+            CommunicationWrapper.send(this.coordinator, new Message<>(MessageTypes.UPDATE_REQUEST, newState), getSelf());
             // same as heartbeat, only coordinator can send UPDATE response
             Cancellable timeout = this.setTimeout(MessageTypes.UPDATE_REQUEST, DotenvLoader.getInstance().getTimeout(), this.coordinator);
             MessageTypes key = this.sentExpectedMap.get(MessageTypes.UPDATE_REQUEST);
@@ -177,6 +185,9 @@ public class Cohort extends AbstractActor {
 
     // Coordinator sends vote requests to all cohorts (included himself)
     private void startQuorum(int newState) throws InterruptedException {
+        this.updateIdentifier.setSequence(this.updateIdentifier.getSequence() + 1);
+        this.unstableStateMap.put(this.updateIdentifier.copy(), newState);
+
         for (ActorRef cohort : this.cohorts) {
             HashMap<MessageTypes, List<Cancellable>> timersCohort = this.timersBroadcastCohorts.get(cohort);
             //we are adding cohort because we want to be able who crashed if we did not receive the ack message
@@ -184,46 +195,60 @@ public class Cohort extends AbstractActor {
             MessageTypes key = this.sentExpectedMap.get(MessageTypes.UPDATE);
             List<Cancellable> timersList = timersCohort.get(key);
             timersList.add(timeout);
-            CommunicationWrapper.send(cohort, new Message<Integer>(MessageTypes.UPDATE, newState), getSelf());
+            Pair<UpdateIdentifier, Integer> payload = new Pair<>(this.updateIdentifier.copy(), newState);
+            CommunicationWrapper.send(cohort, new Message<>(MessageTypes.UPDATE, payload), getSelf());
         }
     }
 
     // Cohorts receive vote request from coordinator
-    private void onUpdate(int newState, MessageTypes topic) throws InterruptedException {
+    private void onUpdate(UpdateIdentifier updateID, int newState, MessageTypes topic) throws InterruptedException {
         // remove the timer for the update
         List<Cancellable> timersList = this.timersBroadcast.get(topic);
         if (!timersList.isEmpty()) {
             Cancellable timer = timersList.remove(0);
             timer.cancel();
         }
+
         // start the timer for the ack
-        Cancellable timeout = setTimeout(MessageTypes.ACK, DotenvLoader.getInstance().getTimeout(), this.coordinator);
-        MessageTypes key = this.sentExpectedMap.get(MessageTypes.ACK);
-        List<Cancellable> newList = this.timersBroadcast.get(key);
-        newList.add(timeout);
-        CommunicationWrapper.send(this.coordinator, new Message<Integer>(MessageTypes.ACK, null), getSelf());
+        if (!this.isCoordinator) {
+            Cancellable timeout = setTimeout(MessageTypes.ACK, DotenvLoader.getInstance().getTimeout(), this.coordinator);
+            MessageTypes key = this.sentExpectedMap.get(MessageTypes.ACK);
+            List<Cancellable> newList = this.timersBroadcast.get(key);
+            newList.add(timeout);
+        }
+
+        CommunicationWrapper.send(this.coordinator, new Message<>(MessageTypes.ACK, updateID), getSelf());
     }
 
     // Coordinator receives votes from cohorts and decide when majority is reached
-    private void onACK(ActorRef sender, MessageTypes topic) throws InterruptedException {
+    private void onACK(ActorRef sender, UpdateIdentifier updateID, MessageTypes topic) throws InterruptedException {
         HashMap<MessageTypes, List<Cancellable>> timersCohort = this.timersBroadcastCohorts.get(sender);
         List<Cancellable> timersList = timersCohort.get(MessageTypes.ACK);
-        if (timersList.isEmpty()) {
-            // here we receive an ack from the election mode that was late so we want to ignore it
-            return;
-        }
         Cancellable timer = timersList.remove(0);
         timer.cancel();
+
         // we have to make the coordinator crash to test this functionality
         if (this.noWriteOkResponse) {
             this.isCrashed = true;
             getContext().become(crashed());
             return;
         }
-        this.voters++;
-        if (this.voters >= this.cohorts.size() / 2 + 1) {
+
+        this.votersState.merge(updateID, 1, Integer::sum);
+
+        int voters = this.votersState.get(updateID);
+        if (voters >= this.cohorts.size() / 2 + 1) {
+            int newState = this.unstableStateMap.get(updateID);
+
             for (ActorRef cohort : this.cohorts) {
-                CommunicationWrapper.send(cohort, new Message<Integer>(MessageTypes.WRITEOK, this.unstableState), getSelf());
+                if (cohort.equals(getSelf())) {
+                    this.state = newState;
+                    this.logger.logUpdate(getSelf().path().name(), updateID.getEpoch(), updateID.getSequence(), newState);
+                    continue;
+                }
+                Pair<UpdateIdentifier, Integer> payload = new Pair<>(updateID, newState);
+                CommunicationWrapper.send(cohort, new Message<>(MessageTypes.WRITEOK, payload), getSelf());
+
                 // if we want to test the case where only a part of cohorts get the writeok
                 if (this.onlyOneWriteOkRes && cohort.path().name().equals(this.cohorts.get(1).path().name())) {
                     System.out.println("Crashing cohort " + getSelf().path().name());
@@ -231,23 +256,22 @@ public class Cohort extends AbstractActor {
                     break;
                 }
             }
-            this.voters = 0;
+            this.unstableStateMap.remove(updateID);
+            this.votersState.put(updateID, 0);
         }
     }
 
     // Cohorts receive update confirm from coordinator (included himself)
     // change their state, reset temporary values and increment sequence number
-    private void onWriteOk(Integer newState) throws InterruptedException {
+    private void onWriteOk(UpdateIdentifier updateID, Integer newState) {
         // remove pending timer for this message
         List<Cancellable> timersList = this.timersBroadcast.get(MessageTypes.WRITEOK);
         assert !timersList.isEmpty();
-        System.out.println("Received writeok from coordinator, Canceling timer");
         Cancellable timer = timersList.remove(0);
         timer.cancel();
 
         this.state = newState;
-        this.unstableState = 0;
-        this.updateIdentifier.setSequence(this.updateIdentifier.getSequence() + 1);
+        this.updateIdentifier.setSequence(updateID.getSequence());
         this.history.put(this.updateIdentifier, this.state);
         this.logger.logUpdate(getSelf().path().name(), this.updateIdentifier.getEpoch(), this.updateIdentifier.getSequence(), this.state);
     }
@@ -268,9 +292,6 @@ public class Cohort extends AbstractActor {
         return map.keySet().stream().allMatch(element -> element instanceof ActorRef) &&
                 map.values().stream().allMatch(element -> element instanceof UpdateIdentifier);
     }
-
-    // how to declare generic type in fn signature
-    // payload is a generic type
 
     // We want to send a message, whose sender is the one we are sending message to
     // this is done because we want to be able to understand who crashed if we did not receive the message!
@@ -303,6 +324,7 @@ public class Cohort extends AbstractActor {
 
     private void onMessage(Message<?> message) throws InterruptedException {
         ActorRef sender = getSender();
+        Pair<UpdateIdentifier, Integer> payload = null;
         switch (message.topic) {
             case SET_COORDINATOR:
                 assert message.payload instanceof ActorRef;
@@ -328,22 +350,18 @@ public class Cohort extends AbstractActor {
                 onUpdateRequest((Integer) message.payload, sender);
                 break;
             case UPDATE:
-                assert message.payload instanceof Integer;
-                onUpdate((Integer) message.payload, message.topic);
+                assert message.payload instanceof Pair<?, ?>;
+                payload = InstanceController.unpackUpdateIDState((Pair<?, ?>) message.payload);
+                onUpdate(payload.getFirst(), payload.getSecond(), message.topic);
                 break;
             case ACK:
-                assert message.payload == null;
-                if (this.isCoordinator) {
-                    onACK(sender, message.topic);
-                } else {
-                    // TODO
-                    // throw new InterruptedException("Not a coordinator");
-                    System.out.println("Received ACK from " + sender.path().name());
-                }
+                assert message.payload instanceof UpdateIdentifier;
+                onACK(sender, (UpdateIdentifier) message.payload, message.topic);
                 break;
             case WRITEOK:
-                assert message.payload instanceof Integer;
-                onWriteOk((Integer) message.payload);
+                assert message.payload instanceof Pair<?, ?>;
+                payload = InstanceController.unpackUpdateIDState((Pair<?, ?>) message.payload);
+                onWriteOk(payload.getFirst(), payload.getSecond());
                 break;
             case REMOVE_CRASHED:
                 assert message.payload instanceof ActorRef;
@@ -656,7 +674,7 @@ public class Cohort extends AbstractActor {
             case ELECTION:
                 break;
             default:
-                System.out.println("std msg received");
+                System.out.println("std msg received " + message.topic + " " + message.payload);
                 break;
         }
         // TODO if we receive a read just return the value
@@ -670,6 +688,8 @@ public class Cohort extends AbstractActor {
                 //careful! here MessageTimeout is a Message, so we first have to eval this one!
                 .match(MessageTimeout.class, this::onTimeout)
                 .match(MessageCommand.class, this::onCommandMsg)
+                .match(MessageElection.class, msg -> {
+                }) // if we receive an ack from the election mode that was late
                 .match(Message.class, this::onMessage)
                 .build();
     }

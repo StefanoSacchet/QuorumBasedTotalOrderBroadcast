@@ -1,6 +1,7 @@
 package it.unitn.ds1;
 
 import java.io.Serializable;
+import java.util.Objects;
 
 import it.unitn.ds1.tools.Pair;
 
@@ -51,6 +52,15 @@ public class UpdateIdentifier implements Serializable {
             return false;
         }
         return this.getEpoch() == updateIdentifier.getEpoch() && this.getSequence() == updateIdentifier.getSequence();
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(updateIdentifier.getFirst(), updateIdentifier.getSecond());
+    }
+
+    public UpdateIdentifier copy() {
+        return new UpdateIdentifier(this.getEpoch(), this.getSequence());
     }
 
     @Override

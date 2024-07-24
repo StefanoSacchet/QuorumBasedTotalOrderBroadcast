@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 
-
 import it.unitn.ds1.messages.MessageCommand;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.messages.Message;
@@ -65,42 +64,9 @@ public class Main {
 
         threadSleep(1000);
 
-        // make a given cohort crash
-        CommunicationWrapper.send(cohorts.get(0), new MessageCommand(MessageTypes.CRASH_ONLY_ONE_WRITEOK));
-
-        threadSleep(2500);
-
         CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_UPDATE));
-
-        threadSleep(1000);
-
-        CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_READ));
-
-//        try {
-//            Thread.sleep(2000);
-//        } catch (InterruptedException e) {
-//            throw new RuntimeException(e);
-//        }
-//
-//        CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_UPDATE));
-
-        // tell all cohorts to remove the crashed one
-//        for (ActorRef cohort : cohorts) {
-//            CommunicationWrapper.send(cohort, new Message<>(MessageTypes.REMOVE_CRASHED, cohorts.get(2)), cohorts.get(1));
-//        }
-//
-//        Message<Object> msg1 = new Message<Object>(MessageTypes.UPDATE_REQUEST, 2000000);
-//        CommunicationWrapper.send(cohorts.get(0), msg1, clients.get(0));
-//        System.out.println("sent update request");
-//
-//        try {
-//            Thread.sleep(1000);
-//        } catch (InterruptedException e) {
-//            throw new RuntimeException(e);
-//        }
-//
-//        Message<Object> msg2 = new Message<Object>(MessageTypes.READ_REQUEST, null);
-//        CommunicationWrapper.send(cohorts.get(0), msg2, clients.get(0));
+//        threadSleep(500);
+        CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_UPDATE));
 
         threadSleep(3000);
         system.terminate();

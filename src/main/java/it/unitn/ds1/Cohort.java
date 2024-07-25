@@ -5,14 +5,12 @@ import akka.actor.ActorRef;
 import akka.actor.Cancellable;
 import akka.actor.Props;
 
-import com.typesafe.config.ConfigException;
 import it.unitn.ds1.messages.*;
 import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
 import it.unitn.ds1.loggers.CohortLogger;
 import it.unitn.ds1.tools.InstanceController;
 import it.unitn.ds1.tools.Pair;
-import scala.Int;
 import scala.concurrent.duration.Duration;
 
 import java.util.ArrayList;
@@ -31,8 +29,6 @@ public class Cohort extends AbstractActor {
     private ActorRef coordinator;
 
     private int state;
-    //    private int voters;
-//    private int unstableState;
 
     private final HashMap<UpdateIdentifier, Integer> votersState;
     private final HashMap<UpdateIdentifier, Integer> unstableStateMap;
@@ -66,8 +62,6 @@ public class Cohort extends AbstractActor {
         this.isCoordinator = isCoordinator;
         this.isCrashed = false;
         this.state = 0;
-//        this.voters = 0;
-//        this.unstableState = 0;
         this.votersState = new HashMap<>();
         this.unstableStateMap = new HashMap<>();
         this.updateIdentifier = new UpdateIdentifier(0, 0);
@@ -76,15 +70,14 @@ public class Cohort extends AbstractActor {
         this.coordinatorHeartbeatTimeouts = new ArrayList<>();
         this.cohortHeartbeatTimeout = null;
         this.timersBroadcast = setTimersBroadcast();
-        //each cohort has a map of all timers that he has pending
+        // each cohort has a map of all timers that he has pending
         if (!isCoordinator) {
             this.timersBroadcastCohorts = null;
         } else {
             this.timersBroadcastCohorts = new HashMap<ActorRef, HashMap<MessageTypes, List<Cancellable>>>();
         }
 
-
-        //map to quickly understand sequence of messages in the 2phase broadcast
+        // map to quickly understand sequence of messages in the 2phase broadcast
         this.sentExpectedMap = new HashMap<MessageTypes, MessageTypes>();
         this.sentExpectedMap.put(MessageTypes.UPDATE_REQUEST, MessageTypes.UPDATE);
         this.sentExpectedMap.put(MessageTypes.UPDATE, MessageTypes.ACK);
@@ -139,18 +132,16 @@ public class Cohort extends AbstractActor {
         if (myIndex == -1) {
             throw new IllegalStateException("Cohort not found in the list");
         }
+
         this.predecessor = cohorts.get((myIndex - 1 + N_COHORTS) % N_COHORTS);
         this.successor = cohorts.get((myIndex + 1) % N_COHORTS);
-        // System.out.println(getSelf().path().name() + " predecessor: " + this.predecessor.path().name() + " successor: " + this.successor.path().name());
     }
-
 
     private void initTimersBroadcastCohorts(List<ActorRef> cohorts) {
         for (ActorRef cohort : cohorts) {
             this.timersBroadcastCohorts.put(cohort, setTimersBroadcast());
         }
     }
-
 
     private void onSetNeighbors(List<ActorRef> cohorts) throws InterruptedException {
         this.cohorts = cohorts;
@@ -190,7 +181,7 @@ public class Cohort extends AbstractActor {
 
         for (ActorRef cohort : this.cohorts) {
             HashMap<MessageTypes, List<Cancellable>> timersCohort = this.timersBroadcastCohorts.get(cohort);
-            //we are adding cohort because we want to be able who crashed if we did not receive the ack message
+            // we are adding cohort because we want to be able who crashed if we did not receive the ack message
             Cancellable timeout = setTimeout(MessageTypes.UPDATE, DotenvLoader.getInstance().getTimeout(), cohort);
             MessageTypes key = this.sentExpectedMap.get(MessageTypes.UPDATE);
             List<Cancellable> timersList = timersCohort.get(key);
@@ -202,7 +193,7 @@ public class Cohort extends AbstractActor {
 
     // Cohorts receive vote request from coordinator
     private void onUpdate(UpdateIdentifier updateID, int newState, MessageTypes topic) throws InterruptedException {
-        // remove the timer for the update
+        // remove the timer for the update (only the cohort that sent update_request has it)
         List<Cancellable> timersList = this.timersBroadcast.get(topic);
         if (!timersList.isEmpty()) {
             Cancellable timer = timersList.remove(0);
@@ -282,17 +273,6 @@ public class Cohort extends AbstractActor {
         //TODO update ring topology
     }
 
-    private boolean isNeighborListCorrect(List<?> neighbors) {
-//        List<?> rawList = (List<?>) neighbors;
-        // Check if all elements in the list are instances of ActorRef
-        return neighbors.stream().allMatch(element -> element instanceof ActorRef);
-    }
-
-    private boolean isCohortMapLeaderElectionCorrect(HashMap<?, ?> map) {
-        return map.keySet().stream().allMatch(element -> element instanceof ActorRef) &&
-                map.values().stream().allMatch(element -> element instanceof UpdateIdentifier);
-    }
-
     // We want to send a message, whose sender is the one we are sending message to
     // this is done because we want to be able to understand who crashed if we did not receive the message!
     private Cancellable setTimeout(MessageTypes type, int timeout, ActorRef sender) {
@@ -306,7 +286,6 @@ public class Cohort extends AbstractActor {
     }
 
     private void onHeartbeat(ActorRef sender) {
-        // System.out.println(getSelf().path().name() + " received heartbeat from " + sender.path().name());
         if (this.cohortHeartbeatTimeout != null) {
             this.cohortHeartbeatTimeout.cancel();
         }
@@ -332,7 +311,7 @@ public class Cohort extends AbstractActor {
                 break;
             case SET_NEIGHBORS:
                 assert message.payload instanceof List<?>;
-                if (isNeighborListCorrect((List<?>) message.payload)) {
+                if (InstanceController.isNeighborListCorrect((List<?>) message.payload)) {
                     // This cast is safe because we've checked all elements are ActorRef instances
                     @SuppressWarnings("unchecked") // Suppresses unchecked warning for this specific cast
                     List<ActorRef> actorList = (List<ActorRef>) message.payload;
@@ -372,7 +351,7 @@ public class Cohort extends AbstractActor {
                 break;
             case START_ELECTION:
                 assert message.payload instanceof List<?>;
-                if (isNeighborListCorrect((List<?>) message.payload)) {
+                if (InstanceController.isNeighborListCorrect((List<?>) message.payload)) {
                     // This cast is safe because we've checked all elements are ActorRef instances
                     @SuppressWarnings("unchecked") // Suppresses unchecked warning for this specific cast
                     List<ActorRef> actorList = (List<ActorRef>) message.payload;
@@ -641,7 +620,7 @@ public class Cohort extends AbstractActor {
         ActorRef sender = getSender();
         switch (message.topic) {
             case ELECTION:
-                if (isCohortMapLeaderElectionCorrect((HashMap<?, ?>) message.payload)) {
+                if (InstanceController.isCohortMapLeaderElectionCorrect((HashMap<?, ?>) message.payload)) {
                     @SuppressWarnings("unchecked") // Suppresses unchecked warning for this specific cast
                     HashMap<ActorRef, UpdateIdentifier> map = (HashMap<ActorRef, UpdateIdentifier>) message.payload;
                     onElection(sender, map);
@@ -689,6 +668,7 @@ public class Cohort extends AbstractActor {
                 .match(MessageTimeout.class, this::onTimeout)
                 .match(MessageCommand.class, this::onCommandMsg)
                 .match(MessageElection.class, msg -> {
+                    System.out.println(getSelf().path().name() + " Received election message in normal mode");
                 }) // if we receive an ack from the election mode that was late
                 .match(Message.class, this::onMessage)
                 .build();

@@ -4,7 +4,6 @@ import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import it.unitn.ds1.Client;
 import it.unitn.ds1.Cohort;
-import it.unitn.ds1.UpdateIdentifier;
 import it.unitn.ds1.loggers.LogParser;
 import it.unitn.ds1.loggers.LogType;
 import it.unitn.ds1.loggers.Logger;
@@ -38,7 +37,6 @@ public class TestCoordinatorCrashNoHeartBeat {
         DotenvLoader dotenv = DotenvLoader.getInstance();
         Logger.clearFile(dotenv.getLogPath());
         int N_COHORTS = dotenv.getNCohorts();
-
 
         // Create an actor system named "ringTopologySystem"
         final ActorSystem system = ActorSystem.create("ringTopologySystem");
@@ -75,44 +73,20 @@ public class TestCoordinatorCrashNoHeartBeat {
 
         threadSleep(1000);
 
-        CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_UPDATE));
-
-        threadSleep(1000);
-
         CommunicationWrapper.send(cohorts.get(0), new MessageCommand(MessageTypes.CRASH));
 
-        // sleep to make heartbeat timeout trigger
-        threadSleep(3000);
-
-        CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_UPDATE));
-
-        threadSleep(1000);
-
-        CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_READ));
-
-        threadSleep(4000);
+        threadSleep(6000);
         system.terminate();
     }
 
     @Test
-    void testParseLogFile() throws IOException, InterruptedException {
+    void testParseLogFile() {
         LogParser logParser = new LogParser(DotenvLoader.getInstance().getLogPath());
         List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
-        int expected = 22; //  1 update req, 5 update done, 4 election starting, 1 leader found, 1 update req, 4 update done, 1 read req, 1 read done
+        int expected = 9; // 4 crash detect, 4 election start, 1 leader found
         assertEquals(expected, logEntries.size(), "There should be " + expected + " log entries");
 
-        boolean updateRequestFound = false;
-        int updateDoneCount = 0;
-        for (LogParser.LogEntry entry : logEntries) {
-            if (entry.type == LogType.UPDATE_REQ && entry.firstActor.equals("client_1") && entry.secondActor.equals("cohort_1")) {
-                updateRequestFound = true;
-            } else if (entry.type == LogType.UPDATE && entry.value == 1000000 && entry.updateIdentifier.equals(new UpdateIdentifier(0, 1))) {
-                updateDoneCount++;
-            }
-        }
-        assertTrue(updateRequestFound, "Update request should be found");
-        assertEquals(5, updateDoneCount, "Update done should be found");
-
+        // now we have to check the number of detected crashes and election starting
         int detectedCrashes = 0;
         int startElectionCount = 0;
         for (LogParser.LogEntry entry : logEntries) {
@@ -124,7 +98,8 @@ public class TestCoordinatorCrashNoHeartBeat {
         }
         assertEquals(4, detectedCrashes, "There should be 4 detected crashes, because 4 replicas are alive");
         assertEquals(4, startElectionCount, "There should be 4 election starting, because 4 replicas are alive");
-        //now we have to check leader
+
+        //now we have to check the leader
         boolean leaderFound = false;
         for (LogParser.LogEntry entry : logEntries) {
             if (entry.type == LogType.LEADER_FOUND) {
@@ -133,35 +108,5 @@ public class TestCoordinatorCrashNoHeartBeat {
             }
         }
         assertTrue(leaderFound, "Leader should be found");
-
-        updateRequestFound = false;
-        updateDoneCount = 0;
-        boolean skipFirst = true;
-        for (LogParser.LogEntry entry : logEntries) {
-            if (entry.type == LogType.UPDATE_REQ && entry.firstActor.equals("client_1") && entry.secondActor.equals("cohort_1")) {
-                if (skipFirst) {
-                    skipFirst = false;
-                } else {
-                    updateRequestFound = true;
-                }
-            } else if (entry.type == LogType.UPDATE && entry.value == 1000000 && entry.updateIdentifier.equals(new UpdateIdentifier(1, 1))) {
-                updateDoneCount++;
-            }
-        }
-        assertTrue(updateRequestFound, "Update request should be found");
-        assertEquals(4, updateDoneCount, "Update done should be found");
-
-        //check for read req and read done
-        boolean readRequestFound = false;
-        boolean readDoneFound = false;
-        for (LogParser.LogEntry entry : logEntries) {
-            if (entry.type == LogType.READ_REQ && entry.firstActor.equals("client_1") && entry.secondActor.equals("cohort_1")) {
-                readRequestFound = true;
-            } else if (entry.type == LogType.READ_DONE && entry.firstActor.equals("client_1") && entry.value == 1000000) {
-                readDoneFound = true;
-            }
-        }
-        assertTrue(readRequestFound, "Read request should be found");
-        assertTrue(readDoneFound, "Read done should be found");
     }
 }

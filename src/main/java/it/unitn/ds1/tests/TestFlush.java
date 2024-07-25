@@ -82,6 +82,11 @@ public class TestFlush {
         CommunicationWrapper.send(clients.get(1), new MessageCommand(MessageTypes.TEST_UPDATE));
 
         threadSleep(4000);
+
+        // used to check if the system is still working after a coordinator crash
+        CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_UPDATE));
+
+        threadSleep(3000);
         system.terminate();
     }
 
@@ -89,7 +94,7 @@ public class TestFlush {
     void testParseLogFile() {
         LogParser logParser = new LogParser(DotenvLoader.getInstance().getLogPath());
         List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
-        int expected = 15; // 1 client read_req + 2 replicas update done + 3 replicas no writeOk + 3 start leader election + 1 replica no heartbeat + 1 replica start election + 1 leader found + 3 flushes
+        int expected = 20; // 1 client update req + 2 cohorts update done + 4 cohorts detect crash + 4 cohorts start election + 1 leader found + 3 flush + 4 updates + 1 client update req + 4 cohorts update done
         assertEquals(expected, logEntries.size(), "There should be " + expected + " log entries");
 
         //check for read req and read done
@@ -115,7 +120,10 @@ public class TestFlush {
         int detectedCrashes = 0;
         int startElectionCount = 0;
         for (LogParser.LogEntry entry : logEntries) {
-            if (entry.type == LogType.COHORT_DETECTS_COHORT_CRASH && (MessageTypes.valueOf(entry.causeOfCrash) == MessageTypes.WRITEOK || MessageTypes.valueOf(entry.causeOfCrash) == MessageTypes.HEARTBEAT)) {
+            if (entry.type == LogType.COHORT_DETECTS_COHORT_CRASH && MessageTypes.valueOf(entry.causeOfCrash) == MessageTypes.WRITEOK) {
+                detectedCrashes++;
+                // here cohort_1 detects the crash because cohort_4 send it an election msg
+            } else if (entry.type == LogType.COHORT_DETECTS_COHORT_CRASH && MessageTypes.valueOf(entry.causeOfCrash) == MessageTypes.ELECTION) {
                 detectedCrashes++;
             } else if (entry.type == LogType.LEADER_ELECTION_START && entry.secondActor.equals("cohort_0")) {
                 startElectionCount++;
@@ -140,5 +148,18 @@ public class TestFlush {
             }
         }
         assertEquals(3, flushCount, "There should be 3 flushes with value 2000000 and old state 0");
+
+        // check for update
+        updateRequestFound = false;
+        int updateCount = 0;
+        for (LogParser.LogEntry entry : logEntries) {
+            if (entry.type == LogType.UPDATE && entry.value == 2000000 && entry.updateIdentifier.getEpoch() == 1 && entry.updateIdentifier.getSequence() == 1) {
+                updateCount++;
+            } else if (entry.type == LogType.UPDATE_REQ && entry.value == 2000000 && entry.secondActor.equals("cohort_2")) {
+                updateRequestFound = true;
+            }
+        }
+        assert updateRequestFound : "There should be an update request from cohort_1 to cohort_2 with value 2000000";
+        assertEquals(4, updateCount, "There should be 4 updates with value 2000000 and epoch 1 and sequence 1");
     }
 }

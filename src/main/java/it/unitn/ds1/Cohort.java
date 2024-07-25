@@ -296,7 +296,6 @@ public class Cohort extends AbstractActor {
     // This method is called when the cohort receives a START_ELECTION message
     // It's received when a cohort detects that the coordinator has crashed from UPDATE_REQUEST timeout
     private void onStartElection(MessageTypes topic, List<ActorRef> cohorts) throws InterruptedException {
-        // this.cancelAllTimeouts();
         this.onSetNeighbors(cohorts);
         startLeaderElection(topic);
     }
@@ -399,7 +398,6 @@ public class Cohort extends AbstractActor {
             for (Cancellable timer : timersList) {
                 timer.cancel();
             }
-            System.out.println("Canceling timeouts for " + crashedCohort.path().name());
         }
     }
 
@@ -439,7 +437,6 @@ public class Cohort extends AbstractActor {
         // now we all are in leader election mode and we are ready to perform it
         HashMap<ActorRef, UpdateIdentifier> payload = new HashMap<>();
         payload.put(getSelf(), this.updateIdentifier);
-        // System.out.println("Cohort " + getSelf().path().name() + " starting leader election to " + this.successor.path().name());
         CommunicationWrapper.send(this.successor, new MessageElection<>(MessageTypes.ELECTION, payload), getSelf());
         Cancellable timeout = setTimeout(MessageTypes.ELECTION, DotenvLoader.getInstance().getTimeout(), this.successor);
         MessageTypes key = this.sentExpectedMap.get(MessageTypes.ELECTION);
@@ -472,7 +469,7 @@ public class Cohort extends AbstractActor {
         System.out.println("Cohort " + getSelf().path().name() + " detected " + sender.path().name() + " crashed due to no " + cause + " ELECTION MODE");
     }
 
-    private void onTimeout(MessageTimeout message) throws InterruptedException {
+    private void onTimeout(MessageTimeout<?> message) throws InterruptedException {
         ActorRef crashedCohort = getSender();
         this.cohorts.remove(crashedCohort);
         // update my neighbors
@@ -503,9 +500,36 @@ public class Cohort extends AbstractActor {
         }
     }
 
+    // we are in standard mode, and we received an election message, so we have to switch to election mode
+    private void onElectionMsgInStdMode(MessageElection<?> message) throws InterruptedException {
+        // if the message is not ELECTION is a late message from the election, so we ignore it
+        if (message.topic != MessageTypes.ELECTION) {
+            return;
+        }
+
+        // some old election message may arrive when we finished election, if so ignore them
+        assert message.payload instanceof HashMap<?, ?>;
+        @SuppressWarnings("unchecked") // Suppresses unchecked warning for this specific cast
+        HashMap<ActorRef, UpdateIdentifier> cohortUpdateIdMap = (HashMap<ActorRef, UpdateIdentifier>) message.payload;
+        UpdateIdentifier senderUpdateId = cohortUpdateIdMap.get(getSender());
+        // if the sender has an older epoch than mine, ignore the message
+        if (senderUpdateId.getEpoch() < this.updateIdentifier.getEpoch()) {
+            return;
+        }
+
+        System.out.println(getSelf().path().name() + " detected " + this.coordinator.path().name() + " crashed due to " + message.topic);
+
+        this.cohorts.remove(this.coordinator);
+        // here we don't know the crash cause
+        this.logger.logCrash(getSelf().path().name(), this.coordinator.path().name(), message.topic);
+        onStartElection(message.topic, this.cohorts);
+        // send to myself the election message
+        CommunicationWrapper.send(getSelf(), message, getSender());
+    }
+
     // get the messages that have to be flushed given the last update for a cohort
     private HashMap<UpdateIdentifier, Integer> getFlush(UpdateIdentifier lastUpdate) {
-        HashMap<UpdateIdentifier, Integer> payload = new HashMap<UpdateIdentifier, Integer>();
+        HashMap<UpdateIdentifier, Integer> payload = new HashMap<>();
         for (Map.Entry<UpdateIdentifier, Integer> entry : this.history.entrySet()) {
             UpdateIdentifier key = entry.getKey();
             Integer value = entry.getValue();
@@ -526,7 +550,7 @@ public class Cohort extends AbstractActor {
             if (newLeader.equals(getSelf())) {
                 // I am the new coordinator
                 this.isCoordinator = true;
-                this.timersBroadcastCohorts = new HashMap<ActorRef, HashMap<MessageTypes, List<Cancellable>>>();
+                this.timersBroadcastCohorts = new HashMap<>();
                 System.out.println(getSelf().path().name() + " is the new coordinator");
                 this.logger.logLeaderFound(getSelf().path().name());
 
@@ -534,6 +558,7 @@ public class Cohort extends AbstractActor {
                     HashMap<UpdateIdentifier, Integer> payload = getFlush(map.get(cohort));
                     CommunicationWrapper.send(cohort, new MessageElection<>(MessageTypes.SYNC, payload), getSelf());
                 }
+
             } else {
                 // System.out.println(getSelf().path().name() + " is not the new coordinator, the new coordinator is " + newLeader.path().name());
             }
@@ -611,12 +636,7 @@ public class Cohort extends AbstractActor {
         }
     }
 
-    private boolean isUpdateIDIntCorrect(HashMap<?, ?> map) {
-        return map.keySet().stream().allMatch(element -> element instanceof UpdateIdentifier) &&
-                map.values().stream().allMatch(element -> element instanceof Integer);
-    }
-
-    private void onElectionMessageHandler(MessageElection message) throws InterruptedException {
+    private void onElectionMessageHandler(MessageElection<?> message) throws InterruptedException {
         ActorRef sender = getSender();
         switch (message.topic) {
             case ELECTION:
@@ -634,7 +654,7 @@ public class Cohort extends AbstractActor {
                 break;
             case SYNC:
                 assert message.payload instanceof HashMap<?, ?>;
-                if (isUpdateIDIntCorrect((HashMap<?, ?>) message.payload)) {
+                if (InstanceController.isUpdateIDIntCorrect((HashMap<?, ?>) message.payload)) {
                     @SuppressWarnings("unchecked") // Suppresses unchecked warning for this specific cast
                     HashMap<UpdateIdentifier, Integer> map = (HashMap<UpdateIdentifier, Integer>) message.payload;
                     onSync(sender, map);
@@ -648,7 +668,7 @@ public class Cohort extends AbstractActor {
         }
     }
 
-    private void onMessageElectionMode(Message message) {
+    private void onMessageElectionMode(Message<?> message) {
         switch (message.topic) {
             case ELECTION:
                 break;
@@ -667,17 +687,8 @@ public class Cohort extends AbstractActor {
                 //careful! here MessageTimeout is a Message, so we first have to eval this one!
                 .match(MessageTimeout.class, this::onTimeout)
                 .match(MessageCommand.class, this::onCommandMsg)
-                .match(MessageElection.class, msg -> {
-                    System.out.println(getSelf().path().name() + " Received election message in normal mode");
-                }) // if we receive an ack from the election mode that was late
+                .match(MessageElection.class, this::onElectionMsgInStdMode) // if we receive an ack from the election mode that was late
                 .match(Message.class, this::onMessage)
-                .build();
-    }
-
-    final AbstractActor.Receive crashed() {
-        return receiveBuilder()
-                .matchAny(msg -> {
-                })
                 .build();
     }
 
@@ -686,6 +697,13 @@ public class Cohort extends AbstractActor {
                 .match(MessageTimeout.class, this::onTimeout)
                 .match(MessageElection.class, this::onElectionMessageHandler)
                 .match(Message.class, this::onMessageElectionMode)
+                .build();
+    }
+
+    final AbstractActor.Receive crashed() {
+        return receiveBuilder()
+                .matchAny(msg -> {
+                })
                 .build();
     }
 }

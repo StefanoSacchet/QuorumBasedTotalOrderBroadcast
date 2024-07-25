@@ -6,7 +6,6 @@ import akka.actor.Props;
 import akka.actor.ActorRef;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.messages.MessageCommand;
-import it.unitn.ds1.messages.MessageTimeout;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
@@ -48,7 +47,7 @@ public class Client extends AbstractActor {
         Cancellable timeout = this.pendingTimeouts.get(0);
         timeout.cancel();
         this.pendingTimeouts.remove(timeout);
-        this.logger.logRead(getSelf().path().name(), (Integer) state);
+        this.logger.logRead(getSelf().path().name(), state);
         System.out.println(getSelf().path().name() + " Timeout cancelled");
         System.out.println("Received READ message from " + getSender().path().name() + " with value " + state);
     }
@@ -86,6 +85,7 @@ public class Client extends AbstractActor {
         CommunicationWrapper.send(this.rxCohort, sendMsg, getSelf());
     }
 
+    // the client does not expect a response from the update request
     private void onSendUpdateRequest() throws InterruptedException {
         int value = Integer.parseInt(getSelf().path().name().split("_")[1]) * 1_000_000;
         this.logger.logUpdateReq(getSelf().path().name(), this.rxCohort.path().name(), value);
@@ -111,8 +111,8 @@ public class Client extends AbstractActor {
     @Override
     public Receive createReceive() {
         return receiveBuilder()
-                .match(Message.class, this::onMessage)
                 .match(MessageCommand.class, this::onMessageCommand)
+                .match(Message.class, this::onMessage)
                 .build();
     }
 }

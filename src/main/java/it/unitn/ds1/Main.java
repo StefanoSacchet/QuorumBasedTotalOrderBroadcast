@@ -34,7 +34,7 @@ public class Main {
 
         // Create an array to hold references to the cohorts
 
-        List<ActorRef> cohorts = new ArrayList<ActorRef>(N_COHORTS);
+        List<ActorRef> cohorts = new ArrayList<>(N_COHORTS);
 
         // Create the Coordinator cohort
         ActorRef coordinator = system.actorOf(Cohort.props(true), // specifying this cohort as the coordinator
@@ -52,11 +52,11 @@ public class Main {
         // Link all cohorts with each other
         for (ActorRef cohort : cohorts) {
             List<ActorRef> copyCohorts = new ArrayList<>(cohorts);
-            CommunicationWrapper.send(cohort, new Message<List<ActorRef>>(MessageTypes.SET_NEIGHBORS, copyCohorts), ActorRef.noSender());
-            CommunicationWrapper.send(cohort, new Message<ActorRef>(MessageTypes.SET_COORDINATOR, cohorts.get(0)), ActorRef.noSender());
+            CommunicationWrapper.send(cohort, new Message<>(MessageTypes.SET_NEIGHBORS, copyCohorts), ActorRef.noSender());
+            CommunicationWrapper.send(cohort, new Message<>(MessageTypes.SET_COORDINATOR, cohorts.get(0)), ActorRef.noSender());
         }
 
-        List<ActorRef> clients = new ArrayList<ActorRef>(N_COHORTS);
+        List<ActorRef> clients = new ArrayList<>(N_COHORTS);
         for (int i = 0; i < N_COHORTS; i++) {
             ActorRef client = system.actorOf(Client.props(cohorts.get(i)), "client_" + i);
             clients.add(client);

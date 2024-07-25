@@ -13,7 +13,7 @@ public class Message<T> implements Serializable {
     public Message(MessageTypes topic, T payload) {
         this.topic = topic;
         this.payload = payload;
-        this.roundTripTime = Math.random()* DotenvLoader.getInstance().getRTT();
+        this.roundTripTime = Math.random() * DotenvLoader.getInstance().getRTT();
     }
 
 }

@@ -1,11 +1,9 @@
 package it.unitn.ds1.loggers;
 
 import it.unitn.ds1.UpdateIdentifier;
-import it.unitn.ds1.messages.MessageTypes;
 
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class LogParser extends Logger {

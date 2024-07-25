@@ -1,6 +1,5 @@
 package it.unitn.ds1.loggers;
 
-import it.unitn.ds1.UpdateIdentifier;
 import it.unitn.ds1.messages.MessageTypes;
 
 import java.io.IOException;

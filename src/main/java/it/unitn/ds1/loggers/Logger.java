@@ -14,7 +14,7 @@ public abstract class Logger {
         this.path = Paths.get(pathString);
         this.dir = Paths.get(pathString.split("/")[1]);
         try {
-            synchronized (Logger.class){
+            synchronized (Logger.class) {
                 if (!Files.exists(this.dir)) {
                     Files.createDirectories(this.dir);
                 }
@@ -37,8 +37,4 @@ public abstract class Logger {
             }
         }
     }
-
-
-
-
 }

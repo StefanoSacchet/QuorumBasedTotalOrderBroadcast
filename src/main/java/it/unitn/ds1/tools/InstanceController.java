@@ -13,7 +13,6 @@ public final class InstanceController {
     }
 
     public static boolean isNeighborListCorrect(List<?> neighbors) {
-//        List<?> rawList = (List<?>) neighbors;
         // Check if all elements in the list are instances of ActorRef
         return neighbors.stream().allMatch(element -> element instanceof ActorRef);
     }

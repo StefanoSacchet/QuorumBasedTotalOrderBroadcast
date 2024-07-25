@@ -14,8 +14,8 @@ public enum MessageTypes {
     SYNC,
     ACK,
     CRASH,
-    CRASH_NO_WRITEOK, // used only to make coordinator crash without sending writeok
-    CRASH_ONLY_ONE_WRITEOK, // used only to make coordinator crash after sending only one writeok
+    CRASH_NO_WRITEOK, // used only to make coordinator crash without sending write_ok
+    CRASH_ONLY_ONE_WRITEOK, // used only to make coordinator crash after sending only one write_ok
     TIMEOUT,
     TEST_READ,
     TEST_UPDATE,

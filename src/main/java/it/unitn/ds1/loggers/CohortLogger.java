@@ -56,4 +56,21 @@ public class CohortLogger extends Logger {
             System.err.println("Error writing to log file: " + e.getMessage());
         }
     }
+
+    public void logReadRequestDuringElection(String firstActor, String secondActor){
+        String logEntry = String.format("Replica %s received read request during election from %s%n", firstActor, secondActor);
+        try {
+            Files.write(this.path, logEntry.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            System.err.println("Error writing to log file: " + e.getMessage());
+        }
+    }
+    public void logUpdateRequestDuringElection(String firstActor, String secondActor, int newState){
+        String logEntry = String.format("Replica %s received update request during election from %s with state %s%n", firstActor, secondActor, newState);
+        try {
+            Files.write(this.path, logEntry.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            System.err.println("Error writing to log file: " + e.getMessage());
+        }
+    }
 }

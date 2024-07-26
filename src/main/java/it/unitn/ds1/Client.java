@@ -21,10 +21,11 @@ public class Client extends AbstractActor {
     private final ClientLogger logger;
     List<Cancellable> pendingTimeouts;
 
-    public Client(ActorRef rxCohort) {
+    public Client(ActorRef rxCohort) throws InterruptedException {
         this.rxCohort = rxCohort;
         this.logger = new ClientLogger(DotenvLoader.getInstance().getLogPath());
         this.pendingTimeouts = new ArrayList<>();
+        CommunicationWrapper.send(this.rxCohort, new MessageCommand(MessageTypes.CLIENT_BINDING), getSelf());
     }
 
     public static Props props(ActorRef rxCohort) {

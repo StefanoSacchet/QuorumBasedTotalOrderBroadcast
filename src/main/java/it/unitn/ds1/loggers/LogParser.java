@@ -93,6 +93,13 @@ public class LogParser extends Logger {
             case "flush":
                 type = LogType.FLUSH;
                 break;
+            case "received":
+                if (parts[3].equals("update")) {
+                    type = LogType.COHORT_RECEIVED_UPDATE_REQUEST_DURING_ELECTION;
+                } else if (parts[3].equals("read")) {
+                    type = LogType.COHORT_RECEIVED_READ_REQUEST_DURING_ELECTION;
+                }
+                break;
             default:
                 throw new RuntimeException("New log type found: " + parts[2]);
         }
@@ -163,6 +170,17 @@ public class LogParser extends Logger {
                         int oldState = Integer.parseInt(parts[4]);
                         int newState = Integer.parseInt(parts[6]);
                         logEntries.add(new LogEntry(type, replicaID, null, null, newState, oldState, null));
+                        break;
+                    case COHORT_RECEIVED_UPDATE_REQUEST_DURING_ELECTION:
+                        replicaID = parts[1];
+                        clientID = parts[5];
+                        value = Integer.parseInt(parts[11]);
+                        logEntries.add(new LogEntry(type, replicaID, clientID, null, value, null, null));
+                        break;
+                    case COHORT_RECEIVED_READ_REQUEST_DURING_ELECTION:
+                        replicaID = parts[1];
+                        clientID = parts[5];
+                        logEntries.add(new LogEntry(type, replicaID, clientID, null, null, null, null));
                         break;
                     default:
                         throw new Exception("Invalid log entry" + type);

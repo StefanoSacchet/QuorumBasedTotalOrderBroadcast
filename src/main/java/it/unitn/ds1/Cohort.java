@@ -52,6 +52,10 @@ public class Cohort extends AbstractActor {
 
     private boolean noWriteOkResponse;
     private boolean onlyOneWriteOkRes;
+    private boolean sendReadReqDuringElection;
+    private boolean sendUpdateReqDuringElection;
+
+    private ActorRef client;
 
     public static Props props(boolean isCoordinator) {
         return Props.create(Cohort.class, () -> new Cohort(isCoordinator));
@@ -90,6 +94,8 @@ public class Cohort extends AbstractActor {
         // variable used to test the case where the coordinator crashes before sending write_ok
         this.noWriteOkResponse = false;
         this.onlyOneWriteOkRes = false;
+        this.sendReadReqDuringElection = false;
+        this.sendUpdateReqDuringElection = false;
     }
 
     private HashMap<MessageTypes, List<Cancellable>> setTimersBroadcast() {
@@ -186,6 +192,7 @@ public class Cohort extends AbstractActor {
 
     private void onReadRequest(ActorRef sender) throws InterruptedException {
         CommunicationWrapper.send(sender, new Message<>(MessageTypes.READ, this.state), getSelf());
+
     }
 
     private void onUpdateRequest(Integer newState, ActorRef sender) throws InterruptedException {
@@ -387,6 +394,14 @@ public class Cohort extends AbstractActor {
 
     // Here we have received a message from predecessor, I have to add me and forward
     private void onElection(ActorRef sender, HashMap<ActorRef, UpdateIdentifier> map) throws InterruptedException {
+        if (this.sendReadReqDuringElection){
+            CommunicationWrapper.send(this.client, new MessageCommand(MessageTypes.TEST_READ));
+            this.sendReadReqDuringElection = false;
+        }
+        if (this.sendUpdateReqDuringElection){
+            CommunicationWrapper.send(this.client, new MessageCommand(MessageTypes.TEST_UPDATE));
+            this.sendUpdateReqDuringElection = false;
+        }
         CommunicationWrapper.send(sender, new MessageElection<>(MessageTypes.ACK, null), getSelf());
         if (map.containsKey(getSelf())) {
             // I am contained in the map, which means the leader election is finished, we have to find the new coordinator
@@ -706,15 +721,20 @@ public class Cohort extends AbstractActor {
 
     /***WE ARE IN ELECTION MODE AND RECEIVED AN NORMAL MESSAGE***/
     private void onStdMsgInElectionMode(Message<?> message) throws InterruptedException {
+        ActorRef sender = getSender();
         switch (message.topic) {
             case READ_REQUEST:
                 assert message.payload == null;
+                this.logger.logReadRequestDuringElection(getSelf().path().name(), sender.path().name());
                 System.out.println(getSelf().path().name() + " received read request during election mode");
                 onReadRequest(getSender());
                 break;
             case UPDATE_REQUEST:
                 // TODO if we receive an update request, we save it for later
                 assert message.payload instanceof Integer;
+                if(sender.equals(this.client)){
+                    this.logger.logUpdateRequestDuringElection(getSelf().path().name(), sender.path().name(), (Integer) message.payload);
+                }
                 System.out.println(getSelf().path().name() + " received update request during election mode");
                 this.pendingUpdates.add((Integer) message.payload);
                 break;
@@ -746,6 +766,9 @@ public class Cohort extends AbstractActor {
             case CRASH -> onCommandCrash();
             case CRASH_NO_WRITEOK -> this.noWriteOkResponse = true;
             case CRASH_ONLY_ONE_WRITEOK -> this.onlyOneWriteOkRes = true;
+            case TEST_READ_DURING_ELECTION -> this.sendReadReqDuringElection = true;
+            case TEST_UPDATE_DURING_ELECTION -> this.sendUpdateReqDuringElection = true;
+            case CLIENT_BINDING -> this.client = getSender();
             default -> System.out.println(getSelf().path().name() + " Received unknown command: " + message.topic);
         }
     }

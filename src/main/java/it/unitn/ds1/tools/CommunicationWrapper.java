@@ -24,4 +24,7 @@ public class CommunicationWrapper {
     public static void send(ActorRef receiver, MessageCommand message) throws InterruptedException {
         receiver.tell(message, ActorRef.noSender());
     }
+    public static void send(ActorRef receiver, MessageCommand message, ActorRef sender) throws InterruptedException {
+        receiver.tell(message, sender);
+    }
 }

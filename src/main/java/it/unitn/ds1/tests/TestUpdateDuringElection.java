@@ -27,6 +27,7 @@ public class TestUpdateDuringElection {
         InUtils.threadSleep(1000);
 
         CommunicationWrapper.send(cohorts.get(2), new MessageCommand(MessageTypes.TEST_UPDATE_DURING_ELECTION));
+        CommunicationWrapper.send(cohorts.get(3), new MessageCommand(MessageTypes.TEST_UPDATE_DURING_ELECTION));
         CommunicationWrapper.send(cohorts.get(0), new MessageCommand(MessageTypes.CRASH));
 
         InUtils.threadSleep(6000);
@@ -37,7 +38,7 @@ public class TestUpdateDuringElection {
     void testParseLogFile() {
         LogParser logParser = new LogParser(DotenvLoader.getInstance().getLogPath());
         List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
-        int expected = 11; // 4 detection + 4 leader election start + 1 up request + 1 update done + 1 leader found
+        int expected = 13; // 4 detection + 4 leader election start + 2 up request + 2 update done + 1 leader found
         assertEquals(expected, logEntries.size(), "There should be " + expected + " log entries");
 
         int detectedCrashes = 0;
@@ -62,7 +63,7 @@ public class TestUpdateDuringElection {
                 updateRequests++;
             }
         }
-        assertEquals(1, updateRequests, "There should be 1 update request");
+        assertEquals(2, updateRequests, "There should be 1 update request");
 
         int updateDonesDuringElection = 0;
         for (LogParser.LogEntry logEntry : logEntries) {
@@ -70,7 +71,7 @@ public class TestUpdateDuringElection {
                 updateDonesDuringElection++;
             }
         }
-        assertEquals(1, updateDonesDuringElection, "There should be 1 update done during election");
+        assertEquals(2, updateDonesDuringElection, "There should be 1 update done during election");
 
         int leaderFounds = 0;
         for (LogParser.LogEntry logEntry : logEntries) {

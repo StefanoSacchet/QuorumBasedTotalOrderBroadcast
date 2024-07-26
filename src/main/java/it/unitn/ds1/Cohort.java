@@ -48,6 +48,8 @@ public class Cohort extends AbstractActor {
     //The coordinator needs to keep track of timersBroadcast for each cohort
     private HashMap<ActorRef, HashMap<MessageTypes, List<Cancellable>>> timersBroadcastCohorts;
 
+    private final List<Integer> pendingUpdates;
+
     private boolean noWriteOkResponse;
     private boolean onlyOneWriteOkRes;
 
@@ -82,6 +84,8 @@ public class Cohort extends AbstractActor {
         this.sentExpectedMap.put(MessageTypes.ACK, MessageTypes.WRITEOK);
         this.sentExpectedMap.put(MessageTypes.HEARTBEAT, null);
         this.sentExpectedMap.put(MessageTypes.ELECTION, MessageTypes.ACK);
+
+        this.pendingUpdates = new ArrayList<>();
 
         // variable used to test the case where the coordinator crashes before sending write_ok
         this.noWriteOkResponse = false;
@@ -152,7 +156,6 @@ public class Cohort extends AbstractActor {
         this.successor = cohorts.get((myIndex + 1) % N_COHORTS);
     }
 
-    // TODO it is useful??
     private void onRemoveCrashed(ActorRef crashed) {
         this.cohorts.remove(crashed);
         System.out.println(getSelf().path().name() + " removing " + crashed.path().name() + " from cohorts");
@@ -189,6 +192,8 @@ public class Cohort extends AbstractActor {
         if (this.isCoordinator) {
             startQuorum(newState);
         } else {
+            this.pendingUpdates.add(newState);
+
             CommunicationWrapper.send(this.coordinator, new Message<>(MessageTypes.UPDATE_REQUEST, newState), getSelf());
             // same as heartbeat, only coordinator can send UPDATE response
             Cancellable timeout = this.setTimeout(MessageTypes.UPDATE_REQUEST, DotenvLoader.getInstance().getTimeout(), this.coordinator);
@@ -278,7 +283,7 @@ public class Cohort extends AbstractActor {
 
     // Cohorts receive update confirm from coordinator (not included himself)
     // change their state, reset temporary values and increment sequence number
-    private void onWriteOk(UpdateIdentifier updateID, Integer newState) {
+    private void onWriteOk(UpdateIdentifier updateID, Integer newState) throws InterruptedException {
         // remove pending timer for this message
         List<Cancellable> timersList = this.timersBroadcast.get(MessageTypes.WRITEOK);
         assert !timersList.isEmpty();
@@ -289,9 +294,15 @@ public class Cohort extends AbstractActor {
         this.updateIdentifier.setSequence(updateID.getSequence());
         this.history.put(this.updateIdentifier, this.state);
         this.logger.logUpdate(getSelf().path().name(), this.updateIdentifier.getEpoch(), this.updateIdentifier.getSequence(), this.state);
+
+        // handle pending updates
+        if (!this.pendingUpdates.isEmpty()) {
+            this.pendingUpdates.remove(0);
+        }
     }
 
     private void onHeartbeat(ActorRef sender) {
+        System.out.println(getSelf().path().name() + " received heartbeat from " + sender.path().name());
         assert sender.equals(this.coordinator);
         // we have received a heartbeat from the coordinator
         if (this.cohortHeartbeatTimeout != null) {
@@ -410,7 +421,7 @@ public class Cohort extends AbstractActor {
         timer.cancel();
     }
 
-    private void onSync(ActorRef sender, HashMap<UpdateIdentifier, Integer> flushedUpdates) {
+    private void onSync(ActorRef sender, HashMap<UpdateIdentifier, Integer> flushedUpdates) throws InterruptedException {
         this.cancelAllTimeouts();
         this.timersBroadcast = setTimersBroadcast();
         getContext().become(createReceive());
@@ -439,6 +450,13 @@ public class Cohort extends AbstractActor {
         if (this.isCoordinator) {
             this.initTimersBroadcastCohorts(this.cohorts);
             this.startHeartbeat();
+        }
+
+        // handle pending updates
+        if (!this.pendingUpdates.isEmpty()) {
+            for (Integer update : this.pendingUpdates) {
+                CommunicationWrapper.send(this.coordinator, new Message<>(MessageTypes.UPDATE_REQUEST, update), getSelf());
+            }
         }
     }
 
@@ -687,13 +705,18 @@ public class Cohort extends AbstractActor {
     }
 
     /***WE ARE IN ELECTION MODE AND RECEIVED AN NORMAL MESSAGE***/
-    private void onStdMsgInElectionMode(Message<?> message) {
+    private void onStdMsgInElectionMode(Message<?> message) throws InterruptedException {
         switch (message.topic) {
             case READ_REQUEST:
-                // TODO if we receive a read just return the value
+                assert message.payload == null;
+                System.out.println(getSelf().path().name() + " received read request during election mode");
+                onReadRequest(getSender());
                 break;
             case UPDATE_REQUEST:
                 // TODO if we receive an update request, we save it for later
+                assert message.payload instanceof Integer;
+                System.out.println(getSelf().path().name() + " received update request during election mode");
+                this.pendingUpdates.add((Integer) message.payload);
                 break;
             default:
                 System.out.println(getSelf().path().name() + " std msg received " + message.topic + " " + message.payload + " from " + getSender().path().name());

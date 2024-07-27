@@ -78,14 +78,20 @@ public class LogParser extends Logger {
                 }
                 break;
             case "detected":
-                if (parts[0].equals("Client")) {
+                if (parts[3].equals("deadlock")) {
+                    type = LogType.DEADLOCK_DETECTED;
+                } else if (parts[0].equals("Client")) {
                     type = LogType.CLIENT_DETECTS_COHORT_CRASH;
                 } else if (parts[0].equals("Cohort")) {
                     type = LogType.COHORT_DETECTS_COHORT_CRASH;
                 }
                 break;
             case "started":
-                type = LogType.LEADER_ELECTION_START;
+                if (parts[6].equals("deadlock")) {
+                    type = LogType.LEADER_ELECTION_START_DEADLOCK;
+                } else {
+                    type = LogType.LEADER_ELECTION_START;
+                }
                 break;
             case "leader":
                 type = LogType.LEADER_FOUND;
@@ -181,6 +187,16 @@ public class LogParser extends Logger {
                         replicaID = parts[1];
                         clientID = parts[8];
                         logEntries.add(new LogEntry(type, replicaID, clientID, null, null, null, null));
+                        break;
+                    case DEADLOCK_DETECTED:
+                        replicaID = parts[1];
+                        causeOfCrash = parts[3];
+                        logEntries.add(new LogEntry(type, replicaID, null, null, null, null, causeOfCrash));
+                        break;
+                    case LEADER_ELECTION_START_DEADLOCK:
+                        replicaID = parts[1];
+                        causeOfCrash = parts[6];
+                        logEntries.add(new LogEntry(type, replicaID, null, null, null, null, causeOfCrash));
                         break;
                     default:
                         throw new Exception("Invalid log entry" + type);

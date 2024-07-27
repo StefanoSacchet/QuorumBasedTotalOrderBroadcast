@@ -38,6 +38,14 @@ public class CohortLogger extends Logger {
             System.err.println("Error writing to log file: " + e.getMessage());
         }
     }
+    public void logLeaderElectionStartDeadlock(String replicaID) {
+        String logEntry = String.format("Cohort %s started election due to deadlock%n", replicaID);
+        try {
+            Files.write(this.path, logEntry.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            System.err.println("Error writing to log file: " + e.getMessage());
+        }
+    }
 
     public void logLeaderFound(String leaderID) {
         String logEntry = String.format("Cohort %s leader found %n", leaderID);
@@ -67,6 +75,15 @@ public class CohortLogger extends Logger {
     }
     public void logUpdateRequestDuringElection(String firstActor, String secondActor, int newState){
         String logEntry = String.format("Replica %s received update request during election from %s with state %s%n", firstActor, secondActor, newState);
+        try {
+            Files.write(this.path, logEntry.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            System.err.println("Error writing to log file: " + e.getMessage());
+        }
+    }
+
+    public void logDeadlock(String replicaID){
+        String logEntry = String.format("Replica %s detected deadlock during election%n", replicaID);
         try {
             Files.write(this.path, logEntry.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {

@@ -54,6 +54,10 @@ public class Cohort extends AbstractActor {
     private boolean onlyOneWriteOkRes;
     private boolean sendReadReqDuringElection;
     private boolean sendUpdateReqDuringElection;
+    private boolean crashDeadlockElection;
+
+    // used to restart election
+    private Cancellable electionTimeout;
 
     private ActorRef client;
 
@@ -88,6 +92,7 @@ public class Cohort extends AbstractActor {
         this.sentExpectedMap.put(MessageTypes.ACK, MessageTypes.WRITEOK);
         this.sentExpectedMap.put(MessageTypes.HEARTBEAT, null);
         this.sentExpectedMap.put(MessageTypes.ELECTION, MessageTypes.ACK);
+        this.sentExpectedMap.put(MessageTypes.ELECTION_TIMEOUT, null);
 
         this.pendingUpdates = new ArrayList<>();
 
@@ -96,6 +101,10 @@ public class Cohort extends AbstractActor {
         this.onlyOneWriteOkRes = false;
         this.sendReadReqDuringElection = false;
         this.sendUpdateReqDuringElection = false;
+        this.crashDeadlockElection = false;
+
+
+        this.electionTimeout = null;
     }
 
     private HashMap<MessageTypes, List<Cancellable>> setTimersBroadcast() {
@@ -351,8 +360,13 @@ public class Cohort extends AbstractActor {
 
     private void startLeaderElection(MessageTypes cause) throws InterruptedException {
         this.cancelAllTimeouts();
-        this.logger.logLeaderElectionStart(getSelf().path().name(), this.coordinator.path().name());
+        if (cause.equals(MessageTypes.ELECTION_TIMEOUT)) {
+            this.logger.logLeaderElectionStartDeadlock(getSelf().path().name());
+        } else{
+            this.logger.logLeaderElectionStart(getSelf().path().name(), this.coordinator.path().name());
+        }
         getContext().become(leader_election());
+        this.electionTimeout = setTimeout(MessageTypes.ELECTION_TIMEOUT, DotenvLoader.getInstance().getElectionTimeout(), getSelf());
 
         try {
             Thread.sleep(DotenvLoader.getInstance().getRTT());
@@ -409,6 +423,7 @@ public class Cohort extends AbstractActor {
 
     // Here we have received a message from predecessor, I have to add me and forward
     private void onElection(ActorRef sender, HashMap<ActorRef, UpdateIdentifier> map) throws InterruptedException {
+        // used to implement tests
         if (this.sendReadReqDuringElection){
             CommunicationWrapper.send(this.client, new MessageCommand(MessageTypes.TEST_READ));
             this.sendReadReqDuringElection = false;
@@ -417,11 +432,16 @@ public class Cohort extends AbstractActor {
             CommunicationWrapper.send(this.client, new MessageCommand(MessageTypes.TEST_UPDATE));
             this.sendUpdateReqDuringElection = false;
         }
+
         CommunicationWrapper.send(sender, new MessageElection<>(MessageTypes.ACK, null), getSelf());
+        // used for testing
+        if (this.crashDeadlockElection){
+            CommunicationWrapper.send(getSelf(), new MessageCommand(MessageTypes.CRASH));
+            return;
+        }
         if (map.containsKey(getSelf())) {
             // I am contained in the map, which means the leader election is finished, we have to find the new coordinator
             ActorRef newLeader = chooseNewLeader(map);
-
             if (newLeader.equals(getSelf())) {
                 // I am the new coordinator
                 this.isCoordinator = true;
@@ -523,6 +543,9 @@ public class Cohort extends AbstractActor {
                 }
             }
         }
+        if (this.electionTimeout != null) {
+            this.electionTimeout.cancel();
+        }
     }
 
     private void cancelCohortTimeouts(ActorRef crashedCohort) {
@@ -575,9 +598,15 @@ public class Cohort extends AbstractActor {
             }
             CommunicationWrapper.send(cohort, new MessageElection<>(MessageTypes.REMOVE_CRASHED, crashedCohort), getSelf());
         }
+        System.out.println(getSelf().path().name() + " new successor is " + this.successor.path().name());
         CommunicationWrapper.send(this.successor, new MessageElection<>(MessageTypes.ELECTION, payload.getSecond()), getSelf());
     }
 
+    private void onElectionDeadlockTimeout() throws InterruptedException {
+        System.out.println("Cohort " + getSelf().path().name() + " detected deadlock in election, starting election again");
+        this.logger.logDeadlock(getSelf().path().name());
+        this.onStartElection(MessageTypes.ELECTION_TIMEOUT, this.cohorts);
+    }
 
     /************************************************************************
      *
@@ -677,7 +706,9 @@ public class Cohort extends AbstractActor {
     /***TIMEOUT MESSAGES HANDLER***/
     private void onTimeout(MessageTimeout<?> message) throws InterruptedException {
         ActorRef crashedCohort = getSender();
-        this.cohorts.remove(crashedCohort);
+        if (message.topic != MessageTypes.ELECTION_TIMEOUT) {
+            this.cohorts.remove(crashedCohort);
+        }
         // update my neighbors
         onSetNeighbors(this.cohorts);
         switch (message.topic) {
@@ -704,6 +735,10 @@ public class Cohort extends AbstractActor {
                     Pair<MessageTypes, HashMap<ActorRef, UpdateIdentifier>> pair = (Pair<MessageTypes, HashMap<ActorRef, UpdateIdentifier>>) message.payload;
                     onElectionSuccessorTimeout((Pair<MessageTypes, HashMap<ActorRef, UpdateIdentifier>>) message.payload, crashedCohort);
                 }
+                break;
+            case ELECTION_TIMEOUT:
+                assert message.payload == null;
+                onElectionDeadlockTimeout();
                 break;
             default:
                 System.out.println("Received unknown timeout: " + message.topic);
@@ -797,6 +832,7 @@ public class Cohort extends AbstractActor {
             case TEST_READ_DURING_ELECTION -> this.sendReadReqDuringElection = true;
             case TEST_UPDATE_DURING_ELECTION -> this.sendUpdateReqDuringElection = true;
             case CLIENT_BINDING -> this.client = getSender();
+            case CRASH_DEADLOCK_ELECTION -> this.crashDeadlockElection = true;
             default -> System.out.println(getSelf().path().name() + " Received unknown command: " + message.topic);
         }
     }
@@ -817,6 +853,7 @@ public class Cohort extends AbstractActor {
         return receiveBuilder()
                 .match(MessageTimeout.class, this::onTimeout)
                 .match(MessageElection.class, this::onElectionMessageHandler)
+                .match(MessageCommand.class, this::onCommandMsg)
                 .match(Message.class, this::onStdMsgInElectionMode)
                 .build();
     }

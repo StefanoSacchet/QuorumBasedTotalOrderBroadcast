@@ -142,6 +142,18 @@ public class Cohort extends AbstractActor {
         );
     }
 
+    private Cancellable setTimeoutElection(MessageTypes type, int timeout, ActorRef sender, Object payload) {
+        return getContext().system().scheduler().scheduleOnce(
+                Duration.create(timeout, TimeUnit.MILLISECONDS), // when to start generating messages
+                getSelf(), // destination actor reference
+                new MessageTimeout<>(type, payload), // the message to send
+                getContext().system().dispatcher(), // system dispatcher
+                sender // source of the message (myself)
+        );
+    }
+
+
+
     private void updatePredecessorSuccessor(List<ActorRef> cohorts) {
         int N_COHORTS = cohorts.size();
         String myName = getSelf().path().name();
@@ -163,9 +175,11 @@ public class Cohort extends AbstractActor {
     }
 
     private void onRemoveCrashed(ActorRef crashed) {
-        this.cohorts.remove(crashed);
-        System.out.println(getSelf().path().name() + " removing " + crashed.path().name() + " from cohorts");
-        //TODO update ring topology
+        if (this.cohorts.contains(crashed)) {
+            this.cohorts.remove(crashed);
+            System.out.println(getSelf().path().name() + " removing " + crashed.path().name() + " from cohorts");
+            this.updatePredecessorSuccessor(cohorts);
+        }
     }
 
 
@@ -350,7 +364,8 @@ public class Cohort extends AbstractActor {
         HashMap<ActorRef, UpdateIdentifier> payload = new HashMap<>();
         payload.put(getSelf(), this.updateIdentifier);
         CommunicationWrapper.send(this.successor, new MessageElection<>(MessageTypes.ELECTION, payload), getSelf());
-        Cancellable timeout = setTimeout(MessageTypes.ELECTION, DotenvLoader.getInstance().getTimeout(), this.successor);
+        Pair<MessageTypes, HashMap<ActorRef, UpdateIdentifier>> timerPayload = new Pair<>(MessageTypes.ELECTION, payload);
+        Cancellable timeout = setTimeoutElection(MessageTypes.ELECTION, DotenvLoader.getInstance().getTimeout(), this.successor, timerPayload);
         MessageTypes key = this.sentExpectedMap.get(MessageTypes.ELECTION);
         this.timersBroadcast.get(key).add(timeout);
     }
@@ -422,7 +437,8 @@ public class Cohort extends AbstractActor {
         } else {
             map.put(getSelf(), this.updateIdentifier);
             CommunicationWrapper.send(this.successor, new MessageElection<>(MessageTypes.ELECTION, map), getSelf());
-            Cancellable timeout = setTimeout(MessageTypes.ELECTION, DotenvLoader.getInstance().getTimeout(), this.successor);
+            Pair<MessageTypes, HashMap<ActorRef, UpdateIdentifier>> timerPayload = new Pair<>(MessageTypes.ELECTION, map);
+            Cancellable timeout = setTimeoutElection(MessageTypes.ELECTION, DotenvLoader.getInstance().getTimeout(), this.successor, timerPayload);
             MessageTypes key = this.sentExpectedMap.get(MessageTypes.ELECTION);
             this.timersBroadcast.get(key).add(timeout);
         }
@@ -549,9 +565,17 @@ public class Cohort extends AbstractActor {
     }
 
     // detects crash of the successor during election
-    private void onElectionSuccessorTimeout(MessageTypes cause, ActorRef sender) {
-        System.out.println("Cohort " + getSelf().path().name() + " detected " + sender.path().name() + " crashed due to no " + cause + " ELECTION MODE");
+    private void onElectionSuccessorTimeout(Pair<MessageTypes, HashMap<ActorRef, UpdateIdentifier>> payload,ActorRef crashedCohort) throws InterruptedException {
+        System.out.println("Cohort " + getSelf().path().name() + " detected " + crashedCohort.path().name() + " crashed due to no response to me");
         // TODO if the successor crashes, we have to remove him from the list of cohorts
+        this.updatePredecessorSuccessor(cohorts);
+        for (ActorRef cohort : this.cohorts) {
+            if (cohort.equals(getSelf())) {
+                continue;
+            }
+            CommunicationWrapper.send(cohort, new MessageElection<>(MessageTypes.REMOVE_CRASHED, crashedCohort), getSelf());
+        }
+        CommunicationWrapper.send(this.successor, new MessageElection<>(MessageTypes.ELECTION, payload.getSecond()), getSelf());
     }
 
 
@@ -631,10 +655,6 @@ public class Cohort extends AbstractActor {
                 payload = InstanceController.unpackUpdateIDState((Pair<?, ?>) message.payload);
                 onWriteOk(payload.getFirst(), payload.getSecond());
                 break;
-            case REMOVE_CRASHED:
-                assert message.payload instanceof ActorRef;
-                onRemoveCrashed((ActorRef) message.payload);
-                break;
             case HEARTBEAT:
                 onHeartbeat(sender);
                 break;
@@ -678,8 +698,12 @@ public class Cohort extends AbstractActor {
                 onACKTimeout((MessageTypes) message.payload);
                 break;
             case ELECTION:
-                assert message.payload == MessageTypes.ACK;
-                onElectionSuccessorTimeout((MessageTypes) message.payload, crashedCohort);
+                // I receive a pair containing <Election, the payload that I had sent to the one who crashed>
+                if (InstanceController.isPayloadElectionTimeoutCorrect((Pair<?, ?>) message.payload)) {
+                    @SuppressWarnings("unchecked") // Suppresses unchecked warning for this specific cast
+                    Pair<MessageTypes, HashMap<ActorRef, UpdateIdentifier>> pair = (Pair<MessageTypes, HashMap<ActorRef, UpdateIdentifier>>) message.payload;
+                    onElectionSuccessorTimeout((Pair<MessageTypes, HashMap<ActorRef, UpdateIdentifier>>) message.payload, crashedCohort);
+                }
                 break;
             default:
                 System.out.println("Received unknown timeout: " + message.topic);
@@ -712,6 +736,10 @@ public class Cohort extends AbstractActor {
                 } else {
                     throw new InterruptedException("Error: Payload contains non-ActorRef elements.");
                 }
+                break;
+            case REMOVE_CRASHED:
+                assert message.payload instanceof ActorRef;
+                onRemoveCrashed((ActorRef) message.payload);
                 break;
             default:
                 System.out.println("UNKNOWN" + getSelf().path().name() + " Received message: " + message.topic + " with payload: " + message.payload);

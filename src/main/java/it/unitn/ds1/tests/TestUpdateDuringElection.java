@@ -63,11 +63,11 @@ public class TestUpdateDuringElection {
                 updateRequests++;
             }
         }
-        assertEquals(2, updateRequests, "There should be 1 update request");
+        assertEquals(2, updateRequests, "There should be 2 update request");
 
         int updateDonesDuringElection = 0;
         for (LogParser.LogEntry logEntry : logEntries) {
-            if (logEntry.type == LogType.COHORT_RECEIVED_UPDATE_REQUEST_DURING_ELECTION) {
+            if (logEntry.type == LogType.COHORT_RECEIVED_UPDATE_REQUEST_DURING_ELECTION && (logEntry.firstActor.equals("cohort_2") || logEntry.firstActor.equals("cohort_3")) && (logEntry.secondActor.equals("client_2") || logEntry.secondActor.equals("client_3"))) {
                 updateDonesDuringElection++;
             }
         }

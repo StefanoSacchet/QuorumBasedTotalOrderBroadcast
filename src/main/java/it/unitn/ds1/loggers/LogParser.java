@@ -173,13 +173,13 @@ public class LogParser extends Logger {
                         break;
                     case COHORT_RECEIVED_UPDATE_REQUEST_DURING_ELECTION:
                         replicaID = parts[1];
-                        clientID = parts[5];
+                        clientID = parts[8];
                         value = Integer.parseInt(parts[11]);
                         logEntries.add(new LogEntry(type, replicaID, clientID, null, value, null, null));
                         break;
                     case COHORT_RECEIVED_READ_REQUEST_DURING_ELECTION:
                         replicaID = parts[1];
-                        clientID = parts[5];
+                        clientID = parts[8];
                         logEntries.add(new LogEntry(type, replicaID, clientID, null, null, null, null));
                         break;
                     default:

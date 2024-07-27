@@ -18,17 +18,12 @@ public class Main {
         List<ActorRef> clients = testUtils.clients;
         ActorSystem system = testUtils.system;
 
+        InUtils.threadSleep(2000);
         CommunicationWrapper.send(cohorts.get(0), new MessageCommand(MessageTypes.CRASH));
+        CommunicationWrapper.send(cohorts.get(2), new MessageCommand(MessageTypes.CRASH));
 
-        InUtils.threadSleep(3500);
-
-        CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_UPDATE));
-
-        InUtils.threadSleep(3000);
-
-        CommunicationWrapper.send(clients.get(3), new MessageCommand(MessageTypes.TEST_READ));
-
-        InUtils.threadSleep(3000);
+        CommunicationWrapper.send(clients.get(3), new MessageCommand(MessageTypes.TEST_UPDATE));
+        InUtils.threadSleep(8000);
         system.terminate();
     }
 }

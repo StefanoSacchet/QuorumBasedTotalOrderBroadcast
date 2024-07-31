@@ -48,7 +48,7 @@ public class CohortLogger extends Logger {
     }
 
     public void logLeaderFound(String leaderID) {
-        String logEntry = String.format("Cohort %s leader found %n", leaderID);
+        String logEntry = String.format("Cohort %s leader found%n", leaderID);
         try {
             Files.write(this.path, logEntry.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {

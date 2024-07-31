@@ -2,7 +2,6 @@ package it.unitn.ds1.tests;
 
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
-import it.unitn.ds1.UpdateIdentifier;
 import it.unitn.ds1.loggers.LogParser;
 import it.unitn.ds1.loggers.LogType;
 import it.unitn.ds1.messages.MessageCommand;

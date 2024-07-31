@@ -1,9 +1,7 @@
-package it.unitn.ds1;
+package it.unitn.ds1.classes;
 
 import java.io.Serializable;
 import java.util.Objects;
-
-import it.unitn.ds1.tools.Pair;
 
 public class UpdateIdentifier implements Serializable {
     public Pair<Integer, Integer> updateIdentifier;

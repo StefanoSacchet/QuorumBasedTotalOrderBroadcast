@@ -2,14 +2,16 @@ package it.unitn.ds1.tools;
 
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
-import it.unitn.ds1.Client;
-import it.unitn.ds1.Cohort;
+import it.unitn.ds1.classes.Client;
+import it.unitn.ds1.classes.Cohort;
 import it.unitn.ds1.loggers.Logger;
 import it.unitn.ds1.messages.Message;
 import it.unitn.ds1.messages.MessageTypes;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 
 public class InUtils {
 
@@ -42,20 +44,31 @@ public class InUtils {
             cohorts.add(cohort);
         }
 
+        // Use a CountDownLatch to wait until all messages are sent
+        CountDownLatch latch = new CountDownLatch(cohorts.size());
+
         // Link all cohorts with each other
         for (ActorRef cohort : cohorts) {
             List<ActorRef> copyCohorts = new ArrayList<>(cohorts);
-            CommunicationWrapper.send(cohort, new Message<>(MessageTypes.SET_NEIGHBORS, copyCohorts), ActorRef.noSender());
-            CommunicationWrapper.send(cohort, new Message<>(MessageTypes.SET_COORDINATOR, cohorts.get(0)), ActorRef.noSender());
+            CompletableFuture.runAsync(() -> {
+                try {
+                    CommunicationWrapper.send(cohort, new Message<>(MessageTypes.SET_NEIGHBORS, copyCohorts), ActorRef.noSender());
+                    CommunicationWrapper.send(cohort, new Message<>(MessageTypes.SET_COORDINATOR, cohorts.get(0)), ActorRef.noSender());
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                latch.countDown();
+            });
         }
+
+        // Wait for all messages to be sent
+        latch.await();
 
         List<ActorRef> clients = new ArrayList<>(N_COHORTS);
         for (int i = 0; i < N_COHORTS; i++) {
             ActorRef client = system.actorOf(Client.props(cohorts.get(i)), "client_" + i);
             clients.add(client);
         }
-
-//        threadSleep(300);
 
         this.system = system;
         this.clients = clients;

@@ -1,7 +1,8 @@
 package it.unitn.ds1.tools;
 
 import akka.actor.ActorRef;
-import it.unitn.ds1.UpdateIdentifier;
+import it.unitn.ds1.classes.Pair;
+import it.unitn.ds1.classes.UpdateIdentifier;
 import it.unitn.ds1.messages.MessageTypes;
 
 import java.util.HashMap;

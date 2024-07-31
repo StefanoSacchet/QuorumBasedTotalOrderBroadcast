@@ -1,4 +1,4 @@
-package it.unitn.ds1;
+package it.unitn.ds1.classes;
 
 import akka.actor.AbstractActor;
 import akka.actor.Cancellable;

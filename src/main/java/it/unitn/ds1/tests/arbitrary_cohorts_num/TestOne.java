@@ -1,4 +1,4 @@
-package it.unitn.ds1.tests;
+package it.unitn.ds1.tests.arbitrary_cohorts_num;
 
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
@@ -9,6 +9,7 @@ import it.unitn.ds1.messages.MessageCommand;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
+import it.unitn.ds1.tools.GetUpdateValueFromClient;
 import it.unitn.ds1.tools.InUtils;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -17,27 +18,35 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
 
-
 public class TestOne {
+
+    private static DotenvLoader dotenv;
+    private static int updateValue;
 
     @BeforeAll
     static void setUp() throws InterruptedException {
+        dotenv = DotenvLoader.getInstance();
+
         InUtils inUtils = new InUtils();
         List<ActorRef> cohorts = inUtils.cohorts;
         List<ActorRef> clients = inUtils.clients;
         ActorSystem system = inUtils.system;
 
-        CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_READ));
-
-        InUtils.threadSleep(1000);
-
-        CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_UPDATE));
-
         InUtils.threadSleep(1000);
 
         CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_READ));
 
-        InUtils.threadSleep(3000);
+        InUtils.threadSleep(1000);
+
+        ActorRef clientRequest = clients.get(2);
+        updateValue = GetUpdateValueFromClient.getValue(clientRequest);
+        CommunicationWrapper.send(clientRequest, new MessageCommand(MessageTypes.TEST_UPDATE));
+
+        InUtils.threadSleep(2000);
+
+        CommunicationWrapper.send(clients.get(2), new MessageCommand(MessageTypes.TEST_READ));
+
+        InUtils.threadSleep(1000);
         system.terminate();
     }
 
@@ -45,13 +54,13 @@ public class TestOne {
     void testParseLogFile() {
         LogParser logParser = new LogParser(DotenvLoader.getInstance().getLogPath());
         List<LogParser.LogEntry> logEntries = logParser.parseLogFile();
-        int N_COHORTS = DotenvLoader.getInstance().getNCohorts();
+        int N_COHORTS = dotenv.getNCohorts();
         int expected = N_COHORTS + 5; // 2 read req and read done,1 update req, N_COHORTS  update done
 
         assertEquals(expected, logEntries.size(), "There should be" + expected + " log entries");
         assertEquals(expected, logEntries.size(), "There should be " + expected + " log entries");
 
-        //check read req and read done
+        // check read req and read done
         boolean readRequestFound = false;
         boolean readDoneFound = false;
         for (LogParser.LogEntry entry : logEntries) {
@@ -64,23 +73,21 @@ public class TestOne {
         assertTrue(readRequestFound, "Read request should be found");
         assertTrue(readDoneFound, "Read done should be found");
 
-        //check update request and crash detected
+        // check update request and crash detected
         boolean updateRequestFound = false;
-        int updateValue = -1;
         for (LogParser.LogEntry entry : logEntries) {
             if (entry.type == LogType.UPDATE_REQ && entry.firstActor.equals("client_2") && entry.secondActor.equals("cohort_2")) {
                 updateRequestFound = true;
-                updateValue = entry.value;
                 break;
             }
         }
-        assertEquals(updateValue, 2000000, "Update value should be 2000000");
+        assertEquals(updateValue, 2000000, "Update value should be " + updateValue);
         assertTrue(updateRequestFound, "Update request should be found");
 
-        //now we check for the updates
+        // now we check for the updates
         UpdateIdentifier check = new UpdateIdentifier(0, 1);
         int updatesDone = 0;
-        //check for N_COHORTS update messages
+        // check for N_COHORTS update messages
         for (LogParser.LogEntry entry : logEntries) {
             if (entry.type == LogType.UPDATE && entry.updateIdentifier.equals(check) && updateValue == entry.value) {
                 updatesDone++;
@@ -88,7 +95,7 @@ public class TestOne {
         }
         assertEquals(updatesDone, N_COHORTS, "There should be " + N_COHORTS + " update messages");
 
-        //now for the new read request with the crash found
+        // now for the new read request with the crash found
         boolean readRequestFound2 = false;
         boolean readDoneFound2 = false;
         for (LogParser.LogEntry entry : logEntries) {
@@ -102,4 +109,3 @@ public class TestOne {
         assertTrue(readDoneFound2, "Read should be done");
     }
 }
-

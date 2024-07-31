@@ -1,6 +1,6 @@
 package it.unitn.ds1.loggers;
 
-import it.unitn.ds1.UpdateIdentifier;
+import it.unitn.ds1.classes.UpdateIdentifier;
 
 import java.nio.file.Files;
 import java.util.ArrayList;

@@ -1,4 +1,4 @@
-package it.unitn.ds1.tools;
+package it.unitn.ds1.classes;
 
 import java.io.Serializable;
 

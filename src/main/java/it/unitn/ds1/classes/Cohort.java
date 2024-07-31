@@ -1,4 +1,4 @@
-package it.unitn.ds1;
+package it.unitn.ds1.classes;
 
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
@@ -10,13 +10,20 @@ import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
 import it.unitn.ds1.loggers.CohortLogger;
 import it.unitn.ds1.tools.InstanceController;
-import it.unitn.ds1.tools.Pair;
 import scala.concurrent.duration.Duration;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 public class Cohort extends AbstractActor {
+    private enum State {
+        CREATE_RECEIVE,
+        LEADER_ELECTION,
+        CRASHED // Add other states as needed
+    }
+
+    private State currentState;
+
     private boolean isCoordinator;
     private boolean isCrashed;
     private ActorRef predecessor;
@@ -66,6 +73,8 @@ public class Cohort extends AbstractActor {
     }
 
     public Cohort(boolean isCoordinator) {
+        this.currentState = State.CREATE_RECEIVE;
+
         this.isCoordinator = isCoordinator;
         this.isCrashed = false;
         this.state = 0;
@@ -281,6 +290,7 @@ public class Cohort extends AbstractActor {
         if (this.noWriteOkResponse) {
             this.isCrashed = true;
             getContext().become(crashed());
+            this.currentState = State.CRASHED;
             return;
         }
 
@@ -360,12 +370,14 @@ public class Cohort extends AbstractActor {
 
     private void startLeaderElection(MessageTypes cause) throws InterruptedException {
         this.cancelAllTimeouts();
+
         if (cause.equals(MessageTypes.ELECTION_TIMEOUT)) {
             this.logger.logLeaderElectionStartDeadlock(getSelf().path().name());
         } else{
             this.logger.logLeaderElectionStart(getSelf().path().name(), this.coordinator.path().name());
         }
         getContext().become(leader_election());
+        this.currentState = State.LEADER_ELECTION;
         this.electionTimeout = setTimeout(MessageTypes.ELECTION_TIMEOUT, DotenvLoader.getInstance().getElectionTimeout(), getSelf());
 
         try {
@@ -476,6 +488,7 @@ public class Cohort extends AbstractActor {
         this.cancelAllTimeouts();
         this.timersBroadcast = setTimersBroadcast();
         getContext().become(createReceive());
+        this.currentState = State.CREATE_RECEIVE;
         this.coordinator = sender;
 
         // I have to update my history with the flushed updates
@@ -560,6 +573,7 @@ public class Cohort extends AbstractActor {
     }
 
     private void onHeartbeatTimeout(MessageTypes topic) throws InterruptedException {
+        if (this.currentState.equals(State.LEADER_ELECTION)) return;
         System.out.println(getSelf().path().name() + " detected " + this.coordinator.path().name() + " crashed, no " + topic);
         this.logger.logCrash(getSelf().path().name(), this.coordinator.path().name(), topic);
         this.startLeaderElection(topic);
@@ -582,7 +596,7 @@ public class Cohort extends AbstractActor {
     }
 
     private void onACKTimeout(MessageTypes cause) throws InterruptedException {
-        System.out.println("Cohort " + getSelf().path().name() + " detected " + this.coordinator.path().name() + " crashed due to no " + cause);
+        System.out.println("Cohort " + getSelf().path().name() + " detected " + this.coordinator.path().name() + " crashed on ack timeout");
         this.logger.logCrash(getSelf().path().name(), this.coordinator.path().name(), cause);
         this.startLeaderElection(cause);
     }
@@ -632,7 +646,7 @@ public class Cohort extends AbstractActor {
             return;
         }
 
-        System.out.println(getSelf().path().name() + " detected " + this.coordinator.path().name() + " crashed due to " + message.topic);
+        System.out.println(getSelf().path().name() + " detected " + this.coordinator.path().name() + " crashed in std mode, due to " + message.topic);
 
         this.cohorts.remove(this.coordinator);
         // here we don't know the crash cause
@@ -818,6 +832,7 @@ public class Cohort extends AbstractActor {
     // This method is called when the cohort receives a CRASH message
     private void onCommandCrash() {
         getContext().become(crashed());
+        this.currentState = State.CRASHED;
         this.isCrashed = true;
         // the cohorts cancel the timeout for the heartbeat
         this.cancelAllTimeouts();

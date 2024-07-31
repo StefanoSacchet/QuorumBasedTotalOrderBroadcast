@@ -171,7 +171,6 @@ public class Cohort extends AbstractActor {
     }
 
 
-
     private void updatePredecessorSuccessor(List<ActorRef> cohorts) {
         int N_COHORTS = cohorts.size();
         String myName = getSelf().path().name();
@@ -373,7 +372,7 @@ public class Cohort extends AbstractActor {
 
         if (cause.equals(MessageTypes.ELECTION_TIMEOUT)) {
             this.logger.logLeaderElectionStartDeadlock(getSelf().path().name());
-        } else{
+        } else {
             this.logger.logLeaderElectionStart(getSelf().path().name(), this.coordinator.path().name());
         }
         getContext().become(leader_election());
@@ -436,18 +435,19 @@ public class Cohort extends AbstractActor {
     // Here we have received a message from predecessor, I have to add me and forward
     private void onElection(ActorRef sender, HashMap<ActorRef, UpdateIdentifier> map) throws InterruptedException {
         // used to implement tests
-        if (this.sendReadReqDuringElection){
+        if (this.sendReadReqDuringElection) {
             CommunicationWrapper.send(this.client, new MessageCommand(MessageTypes.TEST_READ));
             this.sendReadReqDuringElection = false;
         }
-        if (this.sendUpdateReqDuringElection){
+        if (this.sendUpdateReqDuringElection) {
             CommunicationWrapper.send(this.client, new MessageCommand(MessageTypes.TEST_UPDATE));
             this.sendUpdateReqDuringElection = false;
         }
 
         CommunicationWrapper.send(sender, new MessageElection<>(MessageTypes.ACK, null), getSelf());
+
         // used for testing
-        if (this.crashDeadlockElection){
+        if (this.crashDeadlockElection) {
             CommunicationWrapper.send(getSelf(), new MessageCommand(MessageTypes.CRASH));
             return;
         }
@@ -602,7 +602,7 @@ public class Cohort extends AbstractActor {
     }
 
     // detects crash of the successor during election
-    private void onElectionSuccessorTimeout(Pair<MessageTypes, HashMap<ActorRef, UpdateIdentifier>> payload,ActorRef crashedCohort) throws InterruptedException {
+    private void onElectionSuccessorTimeout(Pair<MessageTypes, HashMap<ActorRef, UpdateIdentifier>> payload, ActorRef crashedCohort) throws InterruptedException {
         System.out.println("Cohort " + getSelf().path().name() + " detected " + crashedCohort.path().name() + " crashed due to no response to me");
         // TODO if the successor crashes, we have to remove him from the list of cohorts
         this.updatePredecessorSuccessor(cohorts);
@@ -640,15 +640,19 @@ public class Cohort extends AbstractActor {
         assert message.payload instanceof HashMap<?, ?>;
         @SuppressWarnings("unchecked") // Suppresses unchecked warning for this specific cast
         HashMap<ActorRef, UpdateIdentifier> cohortUpdateIdMap = (HashMap<ActorRef, UpdateIdentifier>) message.payload;
-        UpdateIdentifier senderUpdateId = cohortUpdateIdMap.get(getSender());
-        // if the sender has an older epoch than mine, ignore the message
-        if (senderUpdateId.getEpoch() < this.updateIdentifier.getEpoch()) {
-            return;
-        }
 
-        System.out.println(getSelf().path().name() + " detected " + this.coordinator.path().name() + " crashed in std mode, due to " + message.topic);
+        // if msg has an epoch lower than mine, I can skip it
+        boolean skipMsg = false;
+        for (UpdateIdentifier updateID : cohortUpdateIdMap.values()) {
+            if (updateID.getEpoch() < this.updateIdentifier.getEpoch()) {
+                skipMsg = true;
+                break;
+            }
+        }
+        if (skipMsg) return;
 
         this.cohorts.remove(this.coordinator);
+        this.cancelAllTimeouts();
         // here we don't know the crash cause
         this.logger.logCrash(getSelf().path().name(), this.coordinator.path().name(), message.topic);
         onStartElection(message.topic, this.cohorts);
@@ -809,7 +813,7 @@ public class Cohort extends AbstractActor {
             case UPDATE_REQUEST:
                 // TODO if we receive an update request, we save it for later
                 assert message.payload instanceof Integer;
-                if(sender.equals(this.client)){
+                if (sender.equals(this.client)) {
                     this.logger.logUpdateRequestDuringElection(getSelf().path().name(), sender.path().name(), (Integer) message.payload);
                 }
                 System.out.println(getSelf().path().name() + " received update request during election mode");

@@ -9,7 +9,7 @@ import it.unitn.ds1.messages.MessageCommand;
 import it.unitn.ds1.messages.MessageTypes;
 import it.unitn.ds1.tools.CommunicationWrapper;
 import it.unitn.ds1.tools.DotenvLoader;
-import it.unitn.ds1.tools.GetUpdateValueFromClient;
+import it.unitn.ds1.tools.TestUtils;
 import it.unitn.ds1.tools.InUtils;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -39,7 +39,7 @@ public class TestOne {
         InUtils.threadSleep(1000);
 
         ActorRef clientRequest = clients.get(2);
-        updateValue = GetUpdateValueFromClient.getValue(clientRequest);
+        updateValue = TestUtils.getUpdateValueFromClient(clientRequest);
         CommunicationWrapper.send(clientRequest, new MessageCommand(MessageTypes.TEST_UPDATE));
 
         InUtils.threadSleep(2000);

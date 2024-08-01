@@ -25,7 +25,6 @@ public class Cohort extends AbstractActor {
     private State currentState;
 
     private boolean isCoordinator;
-    private boolean isCrashed;
     private ActorRef predecessor;
     private ActorRef successor;
 
@@ -76,7 +75,6 @@ public class Cohort extends AbstractActor {
         this.currentState = State.CREATE_RECEIVE;
 
         this.isCoordinator = isCoordinator;
-        this.isCrashed = false;
         this.state = 0;
         this.votersState = new HashMap<>();
         this.unstableStateMap = new HashMap<>();
@@ -287,9 +285,7 @@ public class Cohort extends AbstractActor {
 
         // we have to make the coordinator crash to test this functionality
         if (this.noWriteOkResponse) {
-            this.isCrashed = true;
-            getContext().become(crashed());
-            this.currentState = State.CRASHED;
+            onCommandCrash();
             return;
         }
 
@@ -322,7 +318,7 @@ public class Cohort extends AbstractActor {
 
     // Cohorts receive update confirm from coordinator (not included himself)
     // change their state, reset temporary values and increment sequence number
-    private void onWriteOk(UpdateIdentifier updateID, Integer newState) throws InterruptedException {
+    private void onWriteOk(UpdateIdentifier updateID, Integer newState) {
         // remove pending timer for this message
         List<Cancellable> timersList = this.timersBroadcast.get(MessageTypes.WRITEOK);
         assert !timersList.isEmpty();
@@ -596,6 +592,7 @@ public class Cohort extends AbstractActor {
     }
 
     private void onACKTimeout(MessageTypes cause) throws InterruptedException {
+        if (currentState.equals(State.LEADER_ELECTION)) return;
         System.out.println("Cohort " + getSelf().path().name() + " detected " + this.coordinator.path().name() + " crashed on ack timeout");
         this.logger.logCrash(getSelf().path().name(), this.coordinator.path().name(), cause);
         this.startLeaderElection(cause);
@@ -837,7 +834,6 @@ public class Cohort extends AbstractActor {
     private void onCommandCrash() {
         getContext().become(crashed());
         this.currentState = State.CRASHED;
-        this.isCrashed = true;
         // the cohorts cancel the timeout for the heartbeat
         this.cancelAllTimeouts();
     }

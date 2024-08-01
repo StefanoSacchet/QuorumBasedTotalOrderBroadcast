@@ -407,19 +407,23 @@ public class Cohort extends AbstractActor {
     // choose the new leader given the map of cohorts
     public ActorRef chooseNewLeader(HashMap<ActorRef, UpdateIdentifier> map) {
         ActorRef newLeader = null;
+        int newLeaderNum = Integer.MIN_VALUE;
         int bestFirstValue = Integer.MIN_VALUE;
         int bestSecondValue = Integer.MIN_VALUE;
 
         for (Map.Entry<ActorRef, UpdateIdentifier> entry : map.entrySet()) {
             ActorRef key = entry.getKey();
+            int keyNum = Integer.parseInt(key.path().name().split("_")[1]);
+
             UpdateIdentifier value = entry.getValue();
             int firstValue = value.getEpoch();
             int secondValue = value.getSequence();
 
             if (firstValue > bestFirstValue ||
                     (firstValue == bestFirstValue && secondValue > bestSecondValue) ||
-                    (firstValue == bestFirstValue && secondValue == bestSecondValue && key.compareTo(Objects.requireNonNull(newLeader)) > 0)) {
+                    (firstValue == bestFirstValue && secondValue == bestSecondValue && keyNum > newLeaderNum)) {
                 newLeader = key;
+                newLeaderNum = keyNum;
                 bestFirstValue = firstValue;
                 bestSecondValue = secondValue;
             }

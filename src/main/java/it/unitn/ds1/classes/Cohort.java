@@ -27,6 +27,7 @@ public class Cohort extends AbstractActor {
     private boolean isCoordinator;
     private ActorRef predecessor;
     private ActorRef successor;
+    private ActorRef client;
 
     private List<ActorRef> cohorts;
     private ActorRef coordinator;
@@ -65,7 +66,8 @@ public class Cohort extends AbstractActor {
     // used to restart election
     private Cancellable electionTimeout;
 
-    private ActorRef client;
+    // avoids to send multiple election messages to a crashed cohort
+    private List<Object> electionSent;
 
     public static Props props(boolean isCoordinator) {
         return Props.create(Cohort.class, () -> new Cohort(isCoordinator));
@@ -110,8 +112,9 @@ public class Cohort extends AbstractActor {
         this.sendUpdateReqDuringElection = false;
         this.crashDeadlockElection = false;
 
-
         this.electionTimeout = null;
+
+        this.electionSent = new ArrayList<>();
     }
 
     private HashMap<MessageTypes, List<Cancellable>> setTimersBroadcast() {
@@ -192,7 +195,6 @@ public class Cohort extends AbstractActor {
     private void onRemoveCrashed(ActorRef crashed) {
         if (this.cohorts.contains(crashed)) {
             this.cohorts.remove(crashed);
-            System.out.println(getSelf().path().name() + " removing " + crashed.path().name() + " from cohorts");
             this.updatePredecessorSuccessor(cohorts);
         }
     }
@@ -451,6 +453,7 @@ public class Cohort extends AbstractActor {
             CommunicationWrapper.send(getSelf(), new MessageCommand(MessageTypes.CRASH));
             return;
         }
+
         if (map.containsKey(getSelf())) {
             // I am contained in the map, which means the leader election is finished, we have to find the new coordinator
             ActorRef newLeader = chooseNewLeader(map);
@@ -467,6 +470,10 @@ public class Cohort extends AbstractActor {
                 }
             }
         } else {
+            // if I already sent an election msg ignore this one
+            if (this.electionSent.size() > 3) return;
+            this.electionSent.add(sender);
+
             map.put(getSelf(), this.updateIdentifier);
             CommunicationWrapper.send(this.successor, new MessageElection<>(MessageTypes.ELECTION, map), getSelf());
             Pair<MessageTypes, HashMap<ActorRef, UpdateIdentifier>> timerPayload = new Pair<>(MessageTypes.ELECTION, map);
@@ -478,6 +485,7 @@ public class Cohort extends AbstractActor {
 
     private void onACKElectionMode(ActorRef sender) {
         // I have received the ack, so I have to remove the timeout
+        if (!this.electionSent.isEmpty()) this.electionSent.remove(0);
         List<Cancellable> timeoutList = this.timersBroadcast.get(MessageTypes.ACK);
         assert !timeoutList.isEmpty();
         Cancellable timer = timeoutList.remove(0);
@@ -605,7 +613,6 @@ public class Cohort extends AbstractActor {
     // detects crash of the successor during election
     private void onElectionSuccessorTimeout(Pair<MessageTypes, HashMap<ActorRef, UpdateIdentifier>> payload, ActorRef crashedCohort) throws InterruptedException {
         System.out.println("Cohort " + getSelf().path().name() + " detected " + crashedCohort.path().name() + " crashed due to no response to me");
-        // TODO if the successor crashes, we have to remove him from the list of cohorts
         this.updatePredecessorSuccessor(cohorts);
         for (ActorRef cohort : this.cohorts) {
             if (cohort.equals(getSelf())) {

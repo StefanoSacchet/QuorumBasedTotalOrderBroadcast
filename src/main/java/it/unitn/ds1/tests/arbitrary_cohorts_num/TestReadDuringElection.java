@@ -42,7 +42,7 @@ public class TestReadDuringElection {
 
         CommunicationWrapper.send(cohorts.get(0), new MessageCommand(MessageTypes.CRASH));
 
-        InUtils.threadSleep(11000);
+        InUtils.threadSleep(12000);
         system.terminate();
     }
 

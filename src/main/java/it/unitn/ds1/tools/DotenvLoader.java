@@ -3,19 +3,25 @@ package it.unitn.ds1.tools;
 import io.github.cdimascio.dotenv.Dotenv;
 
 public class DotenvLoader {
-    private int HEARTBEAT_TIMEOUT;
     private static DotenvLoader instance;
     private final Dotenv dotenv;
+
+    private int TIMEOUT;
     private int N_COHORTS;
+    private int MAX_RTT;
+    private int HEARTBEAT;
+    private int HEARTBEAT_TIMEOUT;
+    private int ELECTION_TIMEOUT;
 
     public DotenvLoader() {
         this.dotenv = Dotenv.configure().directory("./config").load();
-        this.N_COHORTS = Integer.parseInt(dotenv.get("N_COHORTS"));
 
-        int MAX_RTT = Integer.parseInt(dotenv.get("MAX_RTT"));
-        int HEARTBEAT = Integer.parseInt(dotenv.get("HEARTBEAT_INTERVAL"));
+        this.TIMEOUT = Integer.parseInt(dotenv.get("TIMEOUT"));
+        this.N_COHORTS = Integer.parseInt(dotenv.get("N_COHORTS"));
+        this.MAX_RTT = Integer.parseInt(dotenv.get("MAX_RTT"));
+        this.HEARTBEAT = Integer.parseInt(dotenv.get("HEARTBEAT_INTERVAL"));
         this.HEARTBEAT_TIMEOUT = Integer.parseInt(dotenv.get("HEARTBEAT_TIMEOUT"));
-        int TIMEOUT = Integer.parseInt(dotenv.get("TIMEOUT"));
+        this.ELECTION_TIMEOUT = Integer.parseInt(dotenv.get("ELECTION_TIMEOUT"));
 
         assert N_COHORTS > 2;
         assert MAX_RTT < TIMEOUT;
@@ -35,19 +41,35 @@ public class DotenvLoader {
     }
 
     public int getTimeout() {
-        return Integer.parseInt(dotenv.get("TIMEOUT"));
+        return this.TIMEOUT;
+    }
+
+    public void setTimeout(int timeout) {
+        this.TIMEOUT = timeout;
     }
 
     public int getNCohorts() {
         return this.N_COHORTS;
     }
 
+    public void setNCohorts(int newNCohorts) {
+        this.N_COHORTS = newNCohorts;
+    }
+
     public int getRTT() {
-        return Integer.parseInt(dotenv.get("MAX_RTT"));
+        return this.MAX_RTT;
+    }
+
+    public void setRTT(int newRTT) {
+        this.MAX_RTT = newRTT;
     }
 
     public int getHeartbeat() {
-        return Integer.parseInt(dotenv.get("HEARTBEAT_INTERVAL"));
+        return this.HEARTBEAT;
+    }
+
+    public void setHeartbeat(int newHeartbeat) {
+        this.HEARTBEAT = newHeartbeat;
     }
 
     public int getHeartbeatTimeout() {
@@ -58,11 +80,11 @@ public class DotenvLoader {
         this.HEARTBEAT_TIMEOUT = timeout;
     }
 
-    public void setNCohorts(int newNCohorts) {
-        this.N_COHORTS = newNCohorts;
+    public int getElectionTimeout() {
+        return this.ELECTION_TIMEOUT;
     }
 
-    public int getElectionTimeout() {
-        return Integer.parseInt(dotenv.get("ELECTION_TIMEOUT"));
+    public void setElectionTimeout(int newElectionTimeout) {
+        this.ELECTION_TIMEOUT = newElectionTimeout;
     }
 }

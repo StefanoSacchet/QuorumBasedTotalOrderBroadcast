@@ -49,7 +49,7 @@ public class TestUpdateBeforeCohortCrashDuringElection {
         updateVal = TestUtils.getUpdateValueFromClient(clientUpdate);
         CommunicationWrapper.send(clients.get(3), new MessageCommand(MessageTypes.TEST_UPDATE));
 
-        InUtils.threadSleep(12000);
+        InUtils.threadSleep(13000);
         system.terminate();
     }
 

@@ -9,6 +9,8 @@ There are two main components:
 - Two-phase broadcast (with a quorum)
 - Coordinator election (on a ring)
 
+![System Overview](images/system_overview.png)
+
 # Project Structure
 
 The project is structured as follows:

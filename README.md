@@ -29,8 +29,12 @@ The project is structured as follows:
 
 # How to run
 
-To run the project clone the repository and open it with IntelliJ IDEA. Then, run the `Main` class.
+Firstly clone the repository:
 
 ```bash
 git clone https://github.com/StefanoSacchet/QuorumBasedTotalOrderBroadcast.git
 ```
+
+Then, navigate to the `config` directory and create a .env file following the structure of the `.env.example` file.
+
+Finally, run the `Main` class.

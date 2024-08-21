@@ -43,14 +43,14 @@ public class TestMultipleElections {
         CommunicationWrapper.send(firstCrash, new MessageCommand(MessageTypes.CRASH));
 
         // wait for the election to end
-        InUtils.threadSleep(12500);
+        InUtils.threadSleep(13000);
 
         // crash another coordinator
         secondCrash = cohorts.get(cohorts.size() - 1);
         CommunicationWrapper.send(secondCrash, new MessageCommand(MessageTypes.CRASH));
 
         // wait for the election to end
-        InUtils.threadSleep(12500);
+        InUtils.threadSleep(13000);
 
         // used to check if the system is still working after a coordinator crash
         clientUpdate = clients.get(2);
@@ -58,7 +58,7 @@ public class TestMultipleElections {
         updateVal = TestUtils.getUpdateValueFromClient(clientUpdate);
         CommunicationWrapper.send(clientUpdate, new MessageCommand(MessageTypes.TEST_UPDATE));
 
-        InUtils.threadSleep(3000);
+        InUtils.threadSleep(3500);
         system.terminate();
     }
 

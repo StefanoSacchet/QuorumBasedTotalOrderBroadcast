@@ -34,6 +34,7 @@ public class Cohort extends AbstractActor {
 
     private int state;
 
+    // used to make concurrent votes
     private final HashMap<UpdateIdentifier, Integer> votersState;
     private final HashMap<UpdateIdentifier, Integer> unstableStateMap;
 
@@ -52,11 +53,13 @@ public class Cohort extends AbstractActor {
     // mapping from a message to the expected one, used if a timeout occurs
     private final HashMap<MessageTypes, MessageTypes> sentExpectedMap;
 
-    //The coordinator needs to keep track of timersBroadcast for each cohort
+    // The coordinator needs to keep track of timersBroadcast for each cohort
     private HashMap<ActorRef, HashMap<MessageTypes, List<Cancellable>>> timersBroadcastCohorts;
 
+    // manage multiple update requests also during election
     private final List<Integer> pendingUpdates;
 
+    // testing flags
     private boolean noWriteOkResponse;
     private boolean onlyOneWriteOkRes;
     private boolean sendReadReqDuringElection;
@@ -66,7 +69,7 @@ public class Cohort extends AbstractActor {
     // used to restart election
     private Cancellable electionTimeout;
 
-    // avoids to send multiple election messages to a crashed cohort
+    // avoids to send several election messages to a crashed cohort
     private List<Object> electionSent;
 
     public static Props props(boolean isCoordinator) {
@@ -819,7 +822,6 @@ public class Cohort extends AbstractActor {
                 onReadRequest(getSender());
                 break;
             case UPDATE_REQUEST:
-                // TODO if we receive an update request, we save it for later
                 assert message.payload instanceof Integer;
                 if (sender.equals(this.client)) {
                     this.logger.logUpdateRequestDuringElection(getSelf().path().name(), sender.path().name(), (Integer) message.payload);
